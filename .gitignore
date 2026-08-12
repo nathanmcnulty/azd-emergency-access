@@ -8,7 +8,7 @@ infra/**/*.json
 
 # PowerShell
 *.ps1xml
-Modules/
+/Modules/
 !src/function/**/Modules/
 
 # Function app local settings and build artifacts

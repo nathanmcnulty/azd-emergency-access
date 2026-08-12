@@ -88,7 +88,7 @@ module monitoring 'modules/monitoring.bicep' = {
 // ---------------------------------------------------------------------------
 // User-assigned managed identity + identity-based storage (Function modes only).
 // ---------------------------------------------------------------------------
-module identity 'modules/identity.bicep' = if (usesFunction) {
+module identity 'modules/comparisonIdentity.bicep' = if (usesFunction) {
   name: 'identity'
   scope: rg
   params: {
@@ -98,7 +98,7 @@ module identity 'modules/identity.bicep' = if (usesFunction) {
   }
 }
 
-module storage 'modules/storage.bicep' = if (usesFunction) {
+module storage 'modules/comparisonStorage.bicep' = if (usesFunction) {
   name: 'storage'
   scope: rg
   params: {
