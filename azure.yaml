@@ -1,0 +1,32 @@
+name: azd-emergency-access
+metadata:
+  template: azd-emergency-access@1.0.0
+infra:
+  provider: bicep
+  path: infra
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/Pre-Provision.ps1
+    interactive: true
+    continueOnError: false
+  postprovision:
+    shell: pwsh
+    run: ./scripts/Post-Provision.ps1
+    interactive: true
+    continueOnError: false
+  predeploy:
+    shell: pwsh
+    run: ./scripts/Deploy-Function.ps1
+    interactive: true
+    continueOnError: false
+  postdeploy:
+    shell: pwsh
+    run: ./scripts/Test-Deployment.ps1
+    interactive: true
+    continueOnError: false
+  predown:
+    shell: pwsh
+    run: ./scripts/Pre-Down.ps1
+    interactive: false
+    continueOnError: false

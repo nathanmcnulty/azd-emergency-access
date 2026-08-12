@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "deploymentMode": { "value": "${AZD_DEPLOYMENT_MODE}" },
+    "location": { "value": "${AZURE_LOCATION}" },
+    "namePrefix": { "value": "${AZURE_ENV_NAME}" },
+    "tags": { "value": { "azd-env-name": "${AZURE_ENV_NAME}" } },
+    "emergencyAccessGroupObjectId": { "value": "${AZD_EMERGENCY_GROUP_ID}" },
+    "scheduleCron": { "value": "${AZD_SCHEDULE_CRON}" },
+    "scheduleInterval": { "value": "${AZD_SCHEDULE_INTERVAL}" },
+    "scheduleFrequency": { "value": "${AZD_SCHEDULE_FREQUENCY}" },
+    "scheduleTimeZone": { "value": "${AZD_AUTOMATION_TIME_ZONE}" },
+    "scheduleStartTime": { "value": "${AZD_AUTOMATION_START_TIME=}" },
+    "sentinelWorkspaceName": { "value": "${AZD_SENTINEL_WORKSPACE_NAME=}" },
+    "sentinelWorkspaceResourceGroup": { "value": "${AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP=}" },
+    "functionAuthClientId": { "value": "${AZD_FUNCTION_AUTH_CLIENT_ID=}" },
+    "functionAuthAudience": { "value": "${AZD_FUNCTION_AUTH_AUDIENCE=}" },
+    "sentinelServicePrincipalId": { "value": "${AZD_SENTINEL_SERVICE_PRINCIPAL_ID=}" },
+    "sentinelAlertRuleId": { "value": "${AZD_SENTINEL_ALERT_RULE_ID=}" },
+    "sentinelAutomationRuleId": { "value": "${AZD_SENTINEL_AUTOMATION_RULE_ID=}" }
+  }
+}

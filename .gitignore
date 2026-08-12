@@ -1,0 +1,7 @@
+.azure/
+.vscode/
+local.settings.json
+*.log
+*.zip
+TestResults/
+
