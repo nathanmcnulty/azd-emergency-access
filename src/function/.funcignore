@@ -1,0 +1,9 @@
+.git*
+.vscode
+local.settings.json
+test
+tests
+*.tests.ps1
+.venv
+__pycache__
+README.md

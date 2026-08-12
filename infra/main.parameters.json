@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "deploymentMode": {
+      "value": "${AZD_DEPLOYMENT_MODE}"
+    },
+    "resourceGroupName": {
+      "value": "${AZURE_RESOURCE_GROUP=rg-${AZURE_ENV_NAME}}"
+    },
+    "emergencyAccessGroupObjectId": {
+      "value": "${EMERGENCY_ACCESS_GROUP_ID=}"
+    },
+    "remediationScheduleCron": {
+      "value": "${REMEDIATION_SCHEDULE_CRON=0 */15 * * * *}"
+    },
+    "logicAppRecurrenceMinutes": {
+      "value": "${LOGICAPP_RECURRENCE_MINUTES=15}"
+    },
+    "automationRecurrenceHours": {
+      "value": "${AUTOMATION_RECURRENCE_HOURS=1}"
+    },
+    "functionAadClientId": {
+      "value": "${FUNCTION_AAD_CLIENT_ID=}"
+    },
+    "allowedCallerPrincipalIds": {
+      "value": []
+    },
+    "sentinelWorkspaceName": {
+      "value": "${SENTINEL_WORKSPACE_NAME=}"
+    },
+    "sentinelWorkspaceResourceGroup": {
+      "value": "${SENTINEL_WORKSPACE_RESOURCE_GROUP=}"
+    },
+    "sentinelWorkspaceSubscriptionId": {
+      "value": "${SENTINEL_WORKSPACE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}}"
+    },
+    "sentinelAutomationPrincipalId": {
+      "value": "${SENTINEL_AUTOMATION_PRINCIPAL_ID=}"
+    }
+  }
+}

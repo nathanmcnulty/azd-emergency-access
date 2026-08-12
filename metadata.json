@@ -1,0 +1,33 @@
+{
+  "name": "azd-emergency-access",
+  "title": "Emergency access Conditional Access exclusion",
+  "description": "Keeps a Microsoft Entra emergency access (break-glass) security group excluded from Conditional Access policies, using one of four selectable deployment modes: an Azure Automation runbook, a scheduled Azure Functions PowerShell app, a scheduled Consumption Logic App, or a Microsoft Sentinel near-real-time detection with an alert-triggered playbook that invokes an Entra-protected Function. Also includes an idempotent postprovision tenant bootstrap for the emergency access users, group, and restricted administrative unit, with optional Temporary Access Pass provisioning.",
+  "language": "PowerShell",
+  "products": [
+    "azure-functions",
+    "azure-automation",
+    "azure-logic-apps",
+    "microsoft-sentinel",
+    "entra-id"
+  ],
+  "azdSupport": {
+    "hostKinds": [
+      "function",
+      "automation",
+      "logicapp"
+    ]
+  },
+  "tags": [
+    "conditional-access",
+    "emergency-access",
+    "break-glass",
+    "entra-id",
+    "microsoft-sentinel",
+    "azure-automation",
+    "azure-functions",
+    "security"
+  ],
+  "author": "nathanmcnulty",
+  "repository": "https://github.com/nathanmcnulty/azd-emergency-access",
+  "license": "Unlicense"
+}

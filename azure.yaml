@@ -1,0 +1,30 @@
+# azd-emergency-access
+#
+# This template intentionally does not declare an azd `services` block. Exactly one of the four
+# AZD_DEPLOYMENT_MODE values is selected per environment (see README.md), and only two of them
+# (function-scheduled, sentinel-function) involve a Function App at all. azd's built-in service
+# deploy stage has no supported way to skip a service conditionally, and attempting to deploy
+# function code to a Function App resource that was never provisioned (automation-scheduled,
+# logicapp-scheduled modes) would fail `azd up`. Instead, function packaging and deployment is
+# performed by a secure postprovision hook (scripts/postprovision.ps1 -> scripts/Publish-FunctionApp.ps1)
+# that runs only for the two modes that provisioned a Function App. This keeps `azd up` and
+# `azd provision` working correctly, with no attempted source deployment, for every mode.
+name: azd-emergency-access
+metadata:
+  template: azd-emergency-access@0.1.0
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/preprovision.ps1
+    interactive: true
+    continueOnError: false
+  postprovision:
+    shell: pwsh
+    run: ./scripts/postprovision.ps1
+    interactive: true
+    continueOnError: false
+  predown:
+    shell: pwsh
+    run: ./scripts/predown.ps1
+    interactive: true
+    continueOnError: false

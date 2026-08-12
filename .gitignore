@@ -1,0 +1,34 @@
+# azd
+.azure/
+*.azd.env
+
+# Bicep build output
+infra/**/*.json
+!infra/main.parameters.json
+
+# PowerShell
+*.ps1xml
+Modules/
+!src/function/**/Modules/
+
+# Function app local settings and build artifacts
+local.settings.json
+src/function/bin/
+src/function/obj/
+src/function/.python_packages/
+*.zip
+
+# Pester
+tests/TestResults*.xml
+tests/coverage*.xml
+
+# Editor / OS
+.vscode/
+.vs/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
