@@ -6,7 +6,7 @@ An [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-devel
 
 ## Deployment modes
 
-An azd environment is locked to its first successfully provisioned mode. Run `azd down` before changing `AZD_DEPLOYMENT_MODE`, or create a new azd environment; this prevents incremental ARM deployments from leaving the previous remediator active.
+An azd environment is locked to its first successfully provisioned mode. Use a separate azd environment for each deployment mode. If an environment must be repurposed, run `azd down` successfully before changing `AZD_DEPLOYMENT_MODE`; never change the mode in place, because incremental ARM deployments can leave the previous remediator active.
 
 | `AZD_DEPLOYMENT_MODE` | Trigger | Work performed | Best fit |
 | --- | --- | --- | --- |
@@ -76,7 +76,7 @@ azd provision --preview
 azd up
 ```
 
-The workspace must already be Sentinel-enabled. The template deploys an NRT analytics rule, one alert per result, no incidents, an alert-created automation rule, and a minimal Sentinel playbook. The playbook calls the targeted remediation Function through its managed identity. The hook creates a tenant-local API application with the stable `api://<appId>` audience and an `EmergencyAccess.Remediate` application role, then grants that role to the playbook managed identity. App Service Authentication validates that audience and restricts callers to the playbook principal. The Function binding is `anonymous` only so Easy Auth, rather than a Function key, is the sole request authenticator. No client secret is created.
+The workspace must already be Sentinel-enabled. The template deploys an NRT analytics rule, one alert per result, no incidents, an alert-created automation rule, and a minimal Sentinel playbook. The playbook calls the targeted remediation Function through its managed identity. The hook creates a tenant-local API application with the stable `api://<appId>` audience and an `EmergencyAccess.Remediate` application role, then grants that role to the playbook managed identity. App Service Authentication validates that audience and restricts callers to the playbook principal. The Function binding is `anonymous` only so Easy Auth, rather than a Function key, is the sole request authenticator. No client secret is created. Re-run the Sentinel verification flow after changes to Microsoft Sentinel analytics/automation APIs, the Sentinel Logic Apps connector, or the Function authentication configuration.
 
 ## Architecture
 
@@ -238,7 +238,7 @@ Normal Azure cleanup intentionally does not delete emergency tenant identities. 
 ./scripts/Remove-TenantObjects.ps1 -DeleteObjectsCreatedByThisEnvironment
 ```
 
-PowerShell confirmation is required. Review the resolved and owned IDs first. The script never deletes supplied existing objects, mismatched IDs, unrelated workspaces, or untracked tenant objects. Remove permanent role assignments and authentication methods according to your change process before or after deletion as required.
+PowerShell confirmation is required. Review the resolved and owned IDs first. The script never deletes supplied or reused users, groups, administrative units, API applications/service principals, mismatched IDs, unrelated workspaces, or untracked tenant objects. Do not replace the ownership-aware scripts with broad Graph or directory cleanup commands. Remove permanent role assignments and authentication methods according to your change process before or after deletion as required.
 
 ## Troubleshooting
 
@@ -255,6 +255,14 @@ PowerShell confirmation is required. Review the resolved and owned IDs first. Th
 - Conditional Access exclusion protects recoverability but removes controls represented by the excluded policies. Compensate with phishing-resistant credentials, secured devices/processes, and alerting.
 - Scheduled modes can leave a gap until their next run. Sentinel mode depends on prompt audit-log ingestion and healthy Sentinel automation.
 - This template cannot validate organizational approval, physical credential custody, or recovery drills.
+
+## Operational maintenance
+
+- Re-run the repository tests and `azd provision --preview` before deploying template changes.
+- Periodically review Bicep resource API versions, Azure Functions Flex Consumption conventions, Microsoft Graph PowerShell modules and permissions, and pinned GitHub Actions dependencies for supported replacements or security updates.
+- Re-test the complete Sentinel alert-to-Function path after Sentinel API, automation-rule, managed connector, or Easy Auth changes.
+- Exercise the emergency-access procedure regularly, including both users, at least two passkeys per user, monitoring, and documented credential custody.
+- Keep Azure Monitor scheduled-query alerts out of deployments until the roadmap item below is deliberately designed, implemented, and tested.
 
 ## Roadmap
 
