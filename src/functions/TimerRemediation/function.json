@@ -1,0 +1,11 @@
+{
+  "bindings": [
+    {
+      "name": "Timer",
+      "type": "timerTrigger",
+      "direction": "in",
+      "schedule": "%EMERGENCY_ACCESS_SCHEDULE%"
+    }
+  ]
+}
+

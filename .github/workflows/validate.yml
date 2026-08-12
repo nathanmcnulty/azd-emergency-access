@@ -1,0 +1,47 @@
+name: Validate template
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run remediation tests
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.7.1 -Force -Scope CurrentUser
+          $result = Invoke-Pester ./tests -Output Detailed -PassThru
+          if ($result.FailedCount -gt 0) { exit 1 }
+
+      - name: Validate PowerShell syntax and Function metadata
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -Include *.ps1,*.psm1 -File | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            )
+            $errors += $parseErrors
+          }
+          Get-ChildItem ./src/functions -Recurse -Filter *.json | ForEach-Object {
+            Get-Content $_.FullName -Raw | ConvertFrom-Json | Out-Null
+          }
+          if ($errors) {
+            $errors | Format-List
+            exit 1
+          }
+
+      - name: Build Bicep
+        run: az bicep build --file infra/main.bicep

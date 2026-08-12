@@ -1,0 +1,9 @@
+.git*
+.azure
+.vscode
+infra
+scripts
+tests
+README.md
+SECURITY.md
+
