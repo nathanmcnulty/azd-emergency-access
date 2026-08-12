@@ -34,11 +34,15 @@ Initialize and select an environment:
 azd init --template nathanmcnulty/azd-emergency-access
 azd env new emergency-protection
 azd env set AZD_DEPLOYMENT_MODE function-scheduled
+azd env set AZD_NON_INTERACTIVE true
 azd env set AZD_EMERGENCY_DOMAIN contoso.onmicrosoft.com
+azd provision --preview
 azd up
 ```
 
-`azd provision --preview` is recommended before `azd up`, especially in production tenants:
+The quickstart selects the scheduled Function mode as the recommended general-purpose option and disables prompts after setting every required value. Review the preview before approving production tenant changes. For interactive mode selection, omit `AZD_NON_INTERACTIVE` and `AZD_DEPLOYMENT_MODE`.
+
+To preview later infrastructure changes before applying them:
 
 ```powershell
 azd provision --preview
@@ -211,6 +215,12 @@ azd config show
 ## CI and noninteractive use
 
 Set `AZD_NON_INTERACTIVE=true`, provide the mode and all mode-specific values, and authenticate Azure CLI/azd using workload identity federation. Tenant bootstrap requires a Microsoft Graph token with the documented application/delegated permissions; do not use a client secret. TAP remains off unless explicitly enabled. If enabled noninteractively, the policy is configured but TAP methods are not generated because their one-time values cannot be safely delivered through CI; create them interactively afterward.
+
+## azd catalog publishing
+
+The repository-owned website metadata is in [`.azd/catalog.json`](.azd/catalog.json). Changes to that file or its catalog inputs on `main` trigger [the catalog publishing workflow](.github/workflows/publish-azd-catalog.yml), which sends an `azd-catalog-updated` repository dispatch to `nathanmcnulty/azd-website`. Maintainers can also run the workflow manually.
+
+Configure the `AZD_CATALOG_TOKEN` repository Actions secret with a fine-grained personal access token that can send repository dispatches to `nathanmcnulty/azd-website` (repository **Contents: Read and write**). When the secret is absent, the workflow succeeds without dispatching and emits a clear notice.
 
 ## Cleanup
 

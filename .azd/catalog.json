@@ -1,0 +1,27 @@
+{
+  "title": "Emergency access protection",
+  "summary": "Continuously ensures the emergency-access group remains excluded from every Microsoft Entra Conditional Access policy.",
+  "tags": [
+    "Entra ID",
+    "Conditional Access",
+    "Emergency Access",
+    "Managed Identity",
+    "Microsoft Sentinel"
+  ],
+  "highlights": [
+    "Choose from four remediation modes: Azure Automation, scheduled Azure Functions, Logic Apps, or Microsoft Sentinel-triggered Functions.",
+    "Uses managed identity throughout, with no stored credentials or client secrets.",
+    "Deploys exactly one remediation mode per azd environment to prevent overlapping remediators."
+  ],
+  "featured": true,
+  "solutionCount": 4,
+  "quickstartCommands": [
+    "azd init --template nathanmcnulty/azd-emergency-access",
+    "azd env new emergency-protection",
+    "azd env set AZD_DEPLOYMENT_MODE function-scheduled",
+    "azd env set AZD_NON_INTERACTIVE true",
+    "azd env set AZD_EMERGENCY_DOMAIN contoso.onmicrosoft.com",
+    "azd provision --preview",
+    "azd up"
+  ]
+}
