@@ -64,12 +64,27 @@ if ($env:AZD_PROVISIONED_MODE -and $env:AZD_PROVISIONED_MODE -ne $env:AZD_DEPLOY
 }
 
 Set-AzdDefault AZURE_LOCATION 'westus2'
+if (-not $env:AZURE_SUBSCRIPTION_ID) {
+    throw 'AZURE_SUBSCRIPTION_ID is required.'
+}
+if (-not $env:AZURE_TENANT_ID) {
+    $subscriptionTenantId = & az account show `
+        --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --query tenantId `
+        --output tsv `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $subscriptionTenantId) {
+        throw 'Unable to resolve AZURE_TENANT_ID from AZURE_SUBSCRIPTION_ID.'
+    }
+    Set-AzdDefault AZURE_TENANT_ID $subscriptionTenantId
+}
 Set-AzdDefault AZD_SCHEDULE_CRON '0 0 */6 * * *'
 Set-AzdDefault AZD_SCHEDULE_INTERVAL '6'
 Set-AzdDefault AZD_SCHEDULE_FREQUENCY 'Hour'
 Set-AzdDefault AZD_AUTOMATION_TIME_ZONE 'Etc/UTC'
 Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
+Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
 if (-not $env:AZD_AUTOMATION_START_TIME) {
     Set-AzdDefault AZD_AUTOMATION_START_TIME (
         [DateTimeOffset]::UtcNow.AddMinutes(15).ToString('yyyy-MM-ddTHH:mm:sszzz')
@@ -82,12 +97,23 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     else {
         "rg-$($env:AZURE_ENV_NAME)"
     }
-    & az automation schedule show `
-        --resource-group $resourceGroupName `
-        --automation-account-name "$($env:AZURE_ENV_NAME)-aa" `
-        --name emergency-access `
-        --only-show-errors | Out-Null
-    $scheduleExists = $LASTEXITCODE -eq 0
+    $resourceGroupExists = & az group exists `
+        --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --name $resourceGroupName `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to check whether resource group '$resourceGroupName' exists."
+    }
+    $scheduleExists = $false
+    if ($resourceGroupExists -eq 'true') {
+        & az automation schedule show `
+            --subscription $env:AZURE_SUBSCRIPTION_ID `
+            --resource-group $resourceGroupName `
+            --automation-account-name "$($env:AZURE_ENV_NAME)-aa" `
+            --name emergency-access `
+            --only-show-errors 2>$null | Out-Null
+        $scheduleExists = $LASTEXITCODE -eq 0
+    }
 
     $parsedStart = [DateTimeOffset]::MinValue
     $validStart = [DateTimeOffset]::TryParse($env:AZD_AUTOMATION_START_TIME, [ref]$parsedStart)
@@ -102,10 +128,42 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY') {
+foreach ($booleanName in 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
+    }
+}
+
+if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
+    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+        if ($env:AZD_SENTINEL_WORKSPACE_NAME) {
+            Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_NAME $env:AZD_SENTINEL_WORKSPACE_NAME
+        }
+        if ($env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP) {
+            Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP
+        }
+    }
+    if (-not $env:AZD_SIGNIN_LOG_WORKSPACE_NAME -or -not $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
+        throw 'Sign-in alerting requires AZD_SIGNIN_LOG_WORKSPACE_NAME and AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP.'
+    }
+    if (-not $env:AZD_SIGNIN_ALERT_EMAIL) {
+        throw 'Sign-in alerting requires AZD_SIGNIN_ALERT_EMAIL.'
+    }
+    try {
+        $alertEmail = [System.Net.Mail.MailAddress]::new($env:AZD_SIGNIN_ALERT_EMAIL)
+    }
+    catch {
+        throw 'AZD_SIGNIN_ALERT_EMAIL must be a valid email address.'
+    }
+    if ($alertEmail.Address -ne $env:AZD_SIGNIN_ALERT_EMAIL) {
+        throw 'AZD_SIGNIN_ALERT_EMAIL must contain one plain email address without a display name.'
+    }
+
+    $signInWorkspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SIGNIN_LOG_WORKSPACE_NAME"
+    & az resource show --ids $signInWorkspaceId --only-show-errors | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Sign-in log workspace '$($env:AZD_SIGNIN_LOG_WORKSPACE_NAME)' was not found in resource group '$($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP)'."
     }
 }
 

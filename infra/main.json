@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "14506893997835608504"
+      "templateHash": "3149039049220626591"
     }
   },
   "parameters": {
@@ -30,7 +30,8 @@
       "defaultValue": {}
     },
     "emergencyAccessGroupObjectId": {
-      "type": "string"
+      "type": "string",
+      "defaultValue": ""
     },
     "scheduleCron": {
       "type": "string",
@@ -94,6 +95,34 @@
     "sentinelAutomationRuleId": {
       "type": "string",
       "defaultValue": ""
+    },
+    "enableSignInAlerts": {
+      "type": "string",
+      "defaultValue": "false",
+      "allowedValues": [
+        "true",
+        "false"
+      ]
+    },
+    "signInLogWorkspaceName": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "signInLogWorkspaceResourceGroup": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "signInAlertEmail": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "emergencyUser1ObjectId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "emergencyUser2ObjectId": {
+      "type": "string",
+      "defaultValue": ""
     }
   },
   "variables": {
@@ -143,7 +172,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "9661454057235242472"
+              "templateHash": "17610459232783225705"
             }
           },
           "parameters": {
@@ -157,7 +186,8 @@
               "type": "object"
             },
             "emergencyAccessGroupObjectId": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "scheduleFrequency": {
               "type": "string"
@@ -611,7 +641,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "6969066533442485888"
+              "templateHash": "1434298425072197655"
             }
           },
           "parameters": {
@@ -625,7 +655,8 @@
               "type": "object"
             },
             "emergencyAccessGroupObjectId": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "scheduleCron": {
               "type": "string"
@@ -1407,7 +1438,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "5007293865285336094"
+              "templateHash": "17457847557523101223"
             }
           },
           "parameters": {
@@ -1421,7 +1452,8 @@
               "type": "object"
             },
             "emergencyAccessGroupObjectId": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "scheduleFrequency": {
               "type": "string"
@@ -1736,7 +1768,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "74058680045963465"
+              "templateHash": "3860497030662469938"
             }
           },
           "parameters": {
@@ -1750,7 +1782,8 @@
               "type": "object"
             },
             "emergencyAccessGroupObjectId": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "sentinelWorkspaceName": {
               "type": "string"
@@ -2911,6 +2944,154 @@
           }
         }
       }
+    },
+    {
+      "condition": "[equals(parameters('enableSignInAlerts'), 'true')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "signin-alerting",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('signInLogWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('signInLogWorkspaceName')), '2023-09-01', 'full').location]"
+          },
+          "namePrefix": {
+            "value": "[parameters('namePrefix')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "workspaceResourceId": {
+            "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('signInLogWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('signInLogWorkspaceName'))]"
+          },
+          "emergencyUser1ObjectId": {
+            "value": "[parameters('emergencyUser1ObjectId')]"
+          },
+          "emergencyUser2ObjectId": {
+            "value": "[parameters('emergencyUser2ObjectId')]"
+          },
+          "notificationEmail": {
+            "value": "[parameters('signInAlertEmail')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "9422782683407757123"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "namePrefix": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "workspaceResourceId": {
+              "type": "string"
+            },
+            "emergencyUser1ObjectId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "emergencyUser2ObjectId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "notificationEmail": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "signInQuery": "[join(createArray('SigninLogs', '| where ingestion_time() >= ago(5m)', format('| where UserId in~ (\"{0}\", \"{1}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId')), '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'), '\n')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/actionGroups",
+              "apiVersion": "2023-01-01",
+              "name": "[format('{0}-emergency-signin-ag', parameters('namePrefix'))]",
+              "location": "global",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "enabled": true,
+                "groupShortName": "EmergSignin",
+                "emailReceivers": [
+                  {
+                    "name": "Emergency access administrators",
+                    "emailAddress": "[parameters('notificationEmail')]",
+                    "useCommonAlertSchema": true
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-12-01",
+              "name": "[format('{0}-emergency-signin', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "actions": {
+                  "actionGroups": [
+                    "[resourceId('Microsoft.Insights/actionGroups', format('{0}-emergency-signin-ag', parameters('namePrefix')))]"
+                  ]
+                },
+                "autoMitigate": false,
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "[variables('signInQuery')]",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 0,
+                      "failingPeriods": {
+                        "minFailingPeriodsToAlert": 1,
+                        "numberOfEvaluationPeriods": 1
+                      }
+                    }
+                  ]
+                },
+                "description": "Critical alert for any successful or failed sign-in attempt by a designated emergency access account.",
+                "displayName": "[format('{0} emergency access account sign-in', parameters('namePrefix'))]",
+                "enabled": true,
+                "evaluationFrequency": "PT5M",
+                "overrideQueryTimeRange": "PT1H",
+                "scopes": [
+                  "[parameters('workspaceResourceId')]"
+                ],
+                "severity": 0,
+                "skipQueryValidation": false,
+                "windowSize": "PT5M"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('{0}-emergency-signin-ag', parameters('namePrefix')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "actionGroupId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/actionGroups', format('{0}-emergency-signin-ag', parameters('namePrefix')))]"
+            },
+            "alertRuleId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/scheduledQueryRules', format('{0}-emergency-signin', parameters('namePrefix')))]"
+            }
+          }
+        }
+      }
     }
   ],
   "outputs": {
@@ -2945,6 +3126,14 @@
     "AZURE_SENTINEL_AUTOMATION_RULE_ID": {
       "type": "string",
       "value": "[if(equals(parameters('deploymentMode'), 'sentinel-function'), reference(resourceId('Microsoft.Resources/deployments', 'sentinel-function'), '2025-04-01').outputs.automationRuleId.value, '')]"
+    },
+    "AZURE_SIGNIN_ALERT_RULE_ID": {
+      "type": "string",
+      "value": "[if(equals(parameters('enableSignInAlerts'), 'true'), reference(resourceId('Microsoft.Resources/deployments', 'signin-alerting'), '2025-04-01').outputs.alertRuleId.value, '')]"
+    },
+    "AZURE_SIGNIN_ALERT_ACTION_GROUP_ID": {
+      "type": "string",
+      "value": "[if(equals(parameters('enableSignInAlerts'), 'true'), reference(resourceId('Microsoft.Resources/deployments', 'signin-alerting'), '2025-04-01').outputs.actionGroupId.value, '')]"
     },
     "AZURE_WORKLOAD_RESOURCE_NAME": {
       "type": "string",

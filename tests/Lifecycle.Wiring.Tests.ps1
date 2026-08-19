@@ -5,6 +5,14 @@ Describe 'Lifecycle security wiring' {
         $preDown = Get-Content "$PSScriptRoot\..\scripts\Pre-Down.ps1" -Raw
         $preProvision = Get-Content "$PSScriptRoot\..\scripts\Pre-Provision.ps1" -Raw
         $validate = Get-Content "$PSScriptRoot\..\scripts\Validate-Environment.ps1" -Raw
+        $parameters = Get-Content "$PSScriptRoot\..\infra\main.parameters.json" -Raw
+        $mainBicep = Get-Content "$PSScriptRoot\..\infra\main.bicep" -Raw
+        $modeBicep = @(
+            'automation-scheduled.bicep',
+            'function-scheduled.bicep',
+            'logicapp-scheduled.bicep',
+            'sentinel-function.bicep'
+        ) | ForEach-Object { Get-Content "$PSScriptRoot\..\infra\modes\$_" -Raw }
         $tenantGuards = Get-Content "$PSScriptRoot\..\scripts\Tenant.Guards.psm1" -Raw
         $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
         $sentinelBicep = Get-Content "$PSScriptRoot\..\infra\modes\sentinel-function.bicep" -Raw
@@ -27,6 +35,18 @@ Describe 'Lifecycle security wiring' {
         $postProvision | Should -Match 'refusing to overwrite it'
     }
 
+    It 'allows preprovision to resolve tenant IDs before ARM parameter validation' {
+        $parameters | Should -Match 'AZD_EMERGENCY_GROUP_ID='
+        $parameters | Should -Match 'AZD_EMERGENCY_USER1_ID='
+        $parameters | Should -Match 'AZD_EMERGENCY_USER2_ID='
+        $validate | Should -Match 'az group exists'
+        $validate | Should -Match 'Set-AzdDefault AZURE_TENANT_ID \$subscriptionTenantId'
+        $mainBicep | Should -Match "param emergencyAccessGroupObjectId string = ''"
+        foreach ($mode in $modeBicep) {
+            $mode | Should -Match '@minLength\(1\)\s*param emergencyAccessGroupObjectId string'
+        }
+    }
+
     It 'cleans owned Sentinel rules even after a deployment mode change' {
         $preDown | Should -Match 'AZD_OWNED_SENTINEL_ALERT_RULE_ID -or'
         $preDown | Should -Not -Match "AZD_DEPLOYMENT_MODE -eq 'sentinel-function'"
@@ -39,7 +59,7 @@ Describe 'Lifecycle security wiring' {
         $tenantGuards | Should -Match 'ExpectedTenantId -ne \$ActiveTenantId'
         $bootstrap | Should -Match 'Assert-AzdTenantContext'
         $bootstrap | Should -Match '--subscription \$env:AZURE_SUBSCRIPTION_ID'
-        $bootstrap | Should -Match '--tenant \$env:AZURE_TENANT_ID'
+        $bootstrap | Should -Not -Match '--tenant \$env:AZURE_TENANT_ID'
     }
 
     It 'refuses incremental deployment mode transitions' {

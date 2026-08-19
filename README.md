@@ -15,7 +15,7 @@ An azd environment is locked to its first successfully provisioned mode. Use a s
 | `logicapp-scheduled` | Consumption Logic App recurrence | Enumerates all Conditional Access policies | Low-code operations |
 | `sentinel-function` | Sentinel NRT alert and automation rule | Remediates only the changed policy | Tenants already ingesting Entra audit logs into Sentinel |
 
-All Graph access uses managed identity. The template does not create a Key Vault, persist credentials, use storage account keys for Function runtime access, expose Function keys, or deploy Azure Monitor scheduled-query alerts.
+All Graph access uses managed identity. The template does not create a Key Vault, persist credentials, use storage account keys for Function runtime access, or expose Function keys. Optional sign-in alerting uses Azure Monitor and has no access to Microsoft Graph credentials.
 
 ## Quickstart
 
@@ -27,6 +27,7 @@ All Graph access uses managed identity. The template does not create a Key Vault
 - Microsoft Entra Global Administrator or Privileged Role Administrator for permanent Global Administrator assignments.
 - Microsoft Graph delegated consent sufficient to create/read the selected tenant objects and assign Graph app roles. TAP configuration also requires authentication-method policy and user-authentication-method permissions.
 - For `sentinel-function`, an existing Log Analytics workspace with Microsoft Sentinel enabled and Entra `AuditLogs` ingestion.
+- For optional sign-in alerting, an existing Log Analytics workspace receiving the tenant's Entra `SigninLogs` and an email address for notifications.
 
 Initialize and select an environment:
 
@@ -36,11 +37,12 @@ azd env new emergency-protection
 azd env set AZD_DEPLOYMENT_MODE function-scheduled
 azd env set AZD_NON_INTERACTIVE true
 azd env set AZD_EMERGENCY_DOMAIN contoso.onmicrosoft.com
+azd hooks run preprovision
 azd provision --preview
 azd up
 ```
 
-The quickstart selects the scheduled Function mode as the recommended general-purpose option and disables prompts after setting every required value. Review the preview before approving production tenant changes. For interactive mode selection, omit `AZD_NON_INTERACTIVE` and `AZD_DEPLOYMENT_MODE`.
+The quickstart selects the scheduled Function mode as the recommended general-purpose option and disables prompts after setting every required value. A first-run `azd provision --preview` does not execute project hooks, so run the preprovision hook explicitly first when IDs still need to be resolved or created. That hook can create privileged tenant identities and the emergency-access group; review its scope before running it. ARM deployment remains fail-closed if a resolved group ID is absent. Review the infrastructure preview before `azd up`. For interactive mode selection, omit `AZD_NON_INTERACTIVE` and `AZD_DEPLOYMENT_MODE`.
 
 To preview later infrastructure changes before applying them:
 
@@ -72,11 +74,30 @@ azd env set AZD_DEPLOYMENT_MODE sentinel-function
 azd env set AZD_SENTINEL_WORKSPACE_NAME law-security
 azd env set AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP rg-security
 azd env set AZD_EMERGENCY_GROUP_ID 22222222-2222-2222-2222-222222222222
+azd hooks run preprovision
 azd provision --preview
 azd up
 ```
 
 The workspace must already be Sentinel-enabled. The template deploys an NRT analytics rule, one alert per result, no incidents, an alert-created automation rule, and a minimal Sentinel playbook. The playbook calls the targeted remediation Function through its managed identity. The hook creates a tenant-local API application with the stable `api://<appId>` audience and an `EmergencyAccess.Remediate` application role, then grants that role to the playbook managed identity. App Service Authentication validates that audience and restricts callers to the playbook principal. The Function binding is `anonymous` only so Easy Auth, rather than a Function key, is the sole request authenticator. No client secret is created. Re-run the Sentinel verification flow after changes to Microsoft Sentinel analytics/automation APIs, the Sentinel Logic Apps connector, or the Function authentication configuration.
+
+### Optional emergency sign-in alerts
+
+Enable this capability with any deployment mode when Entra sign-in logs already flow to a Log Analytics workspace:
+
+```powershell
+azd env set AZD_ENABLE_SIGNIN_ALERTS true
+azd env set AZD_SIGNIN_LOG_WORKSPACE_NAME law-security
+azd env set AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP rg-security
+azd env set AZD_SIGNIN_ALERT_EMAIL identity-operations@contoso.com
+azd hooks run preprovision
+azd provision --preview
+azd up
+```
+
+In `sentinel-function` mode, the sign-in workspace name and resource group default to the configured Sentinel workspace, so only the enable flag and email are additional. The workspace must ingest the tenant's `SigninLogs`; this template intentionally does not change tenant diagnostic settings or log retention. Deployment query validation fails closed if the table is unavailable.
+
+The deployment creates a severity-0 Azure Monitor scheduled-query alert and an email action group in the azd environment's resource group. The alert resource uses the workspace's Azure region. Every five minutes, it searches a one-hour event-time range but selects only records ingested during the preceding five minutes; this accommodates normal ingestion delay without repeatedly alerting on the same record. It matches successful or failed sign-in attempts by either resolved emergency-user object ID. Failed attempts are included because they can reveal misuse even when no login succeeds. The rule is stateless (`autoMitigate: false`), so a later evaluation can notify again rather than remaining suppressed behind an unresolved emergency alert. Azure Monitor groups records found in the same evaluation into one alert notification.
 
 ## Architecture
 
@@ -121,6 +142,16 @@ flowchart LR
   Function -->|managed identity| Policy[Changed CA policy]
 ```
 
+### Optional sign-in monitoring
+
+```mermaid
+flowchart LR
+  Signins[Entra SigninLogs] --> Workspace[Existing Log Analytics workspace]
+  Workspace --> Rule[Severity 0 log alert every 5 minutes]
+  Rule --> ActionGroup[Azure Monitor action group]
+  ActionGroup --> Email[Identity operations email]
+```
+
 The NRT query detects successful policy additions/updates, ignores the remediation identity to avoid loops, and exposes `CAPolicyId` as a custom detail:
 
 ```kusto
@@ -146,6 +177,10 @@ AuditLogs
 | `AZD_ADMINISTRATIVE_UNIT_ID` | none | No | Existing administrative-unit object ID |
 | `AZD_USE_RESTRICTED_AU` | `true` | Always | Create/use a restricted management AU; set `false` to skip |
 | `AZD_ENABLE_TAP_POLICY` | `false` | Always | Enable/configure TAP and create reusable TAPs |
+| `AZD_ENABLE_SIGNIN_ALERTS` | `false` | Always | Deploy an optional critical alert for emergency-account sign-in activity |
+| `AZD_SIGNIN_LOG_WORKSPACE_NAME` | Sentinel workspace in Sentinel mode | When alerts enabled | Existing workspace receiving Entra `SigninLogs` |
+| `AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP` | Sentinel workspace resource group in Sentinel mode | When alerts enabled | Resource group containing the sign-in-log workspace |
+| `AZD_SIGNIN_ALERT_EMAIL` | none | When alerts enabled | One plain email address for the deployed action group |
 | `AZD_SCHEDULE_CRON` | `0 0 */6 * * *` | Function mode | Six-field NCRONTAB timer schedule |
 | `AZD_SCHEDULE_INTERVAL` | `6` | Automation/Logic App | Positive recurrence interval |
 | `AZD_SCHEDULE_FREQUENCY` | `Hour` | Automation/Logic App | `Minute`, `Hour`, `Day`, `Week`, or `Month` |
@@ -203,6 +238,7 @@ Rerunning `azd up` reuses tenant IDs persisted in the current azd environment, p
 4. Run remediation again and confirm zero PATCH operations.
 5. Review Automation jobs, Function logs/Application Insights, Logic App run history, or Sentinel automation-rule runs.
 6. Test both emergency users and both passkeys per user through the documented recovery procedure.
+7. If sign-in alerts are enabled, confirm the test creates a severity-0 Azure Monitor alert and that the action-group email arrives. Treat a planned test alert as expected only inside the approved drill window.
 
 Run repository validation:
 
@@ -246,6 +282,8 @@ PowerShell confirmation is required. Review the resolved and owned IDs first. Th
 - **Graph HTTP 403:** confirm the signed-in tenant, active Entra role, Graph delegated consent, and privilege elevation. Azure RBAC Owner does not grant Microsoft Graph privileges.
 - **Function returns 401/403:** confirm the playbook uses managed identity, Easy Auth is enabled, and its principal is authorized for the Function application.
 - **Sentinel automation does not run:** confirm Sentinel onboarding, `AuditLogs` ingestion, NRT rule health, Automation Contributor at playbook RG scope, and the automation rule's analytics-rule condition.
+- **Sign-in alert deployment/query fails:** confirm the selected workspace exists, receives this tenant's `SigninLogs`, and the deployer can read the workspace and create scheduled-query rules/action groups in the environment resource group.
+- **Sign-in alert email does not arrive:** confirm the action group is enabled, the email address is correct, mail filtering permits Azure Monitor notifications, and the sign-in record landed inside the queried five-minute window.
 - **No Function deployment:** install Azure Functions Core Tools v4 and rerun `azd deploy`/`azd up`.
 - **TAP 403:** use the manual fallback in the TAP section; core remediation remains deployable.
 
@@ -261,12 +299,8 @@ PowerShell confirmation is required. Review the resolved and owned IDs first. Th
 - Re-run the repository tests and `azd provision --preview` before deploying template changes.
 - Periodically review Bicep resource API versions, Azure Functions Flex Consumption conventions, Microsoft Graph PowerShell modules and permissions, and pinned GitHub Actions dependencies for supported replacements or security updates.
 - Re-test the complete Sentinel alert-to-Function path after Sentinel API, automation-rule, managed connector, or Easy Auth changes.
+- Re-test the sign-in alert and notification path after changing Entra diagnostic settings, the workspace, or the action group.
 - Exercise the emergency-access procedure regularly, including both users, at least two passkeys per user, monitoring, and documented credential custody.
-- Keep Azure Monitor scheduled-query alerts out of deployments until the roadmap item below is deliberately designed, implemented, and tested.
-
-## Roadmap
-
-- **TODO:** Add an optional Azure Monitor scheduled-query-alert implementation for tenants that do not use Sentinel. No Azure Monitor alert resource is deployed today.
 
 ## References
 
@@ -276,6 +310,7 @@ PowerShell confirmation is required. Review the resolved and owned IDs first. Th
 - [Flex Consumption plan](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
 - [Microsoft Sentinel NRT analytics rules](https://learn.microsoft.com/azure/sentinel/create-nrt-rules)
 - [Microsoft Sentinel automation rules](https://learn.microsoft.com/azure/sentinel/create-manage-use-automation-rules)
+- [Azure Monitor log search alerts](https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-create-log-alert-rule)
 - [Azure Developer CLI template schema](https://learn.microsoft.com/azure/developer/azure-developer-cli/azd-schema)
 
 ## License

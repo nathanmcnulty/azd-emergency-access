@@ -6,7 +6,7 @@
     "location": { "value": "${AZURE_LOCATION}" },
     "namePrefix": { "value": "${AZURE_ENV_NAME}" },
     "tags": { "value": { "azd-env-name": "${AZURE_ENV_NAME}" } },
-    "emergencyAccessGroupObjectId": { "value": "${AZD_EMERGENCY_GROUP_ID}" },
+    "emergencyAccessGroupObjectId": { "value": "${AZD_EMERGENCY_GROUP_ID=}" },
     "scheduleCron": { "value": "${AZD_SCHEDULE_CRON}" },
     "scheduleInterval": { "value": "${AZD_SCHEDULE_INTERVAL}" },
     "scheduleFrequency": { "value": "${AZD_SCHEDULE_FREQUENCY}" },
@@ -18,6 +18,12 @@
     "functionAuthAudience": { "value": "${AZD_FUNCTION_AUTH_AUDIENCE=}" },
     "sentinelServicePrincipalId": { "value": "${AZD_SENTINEL_SERVICE_PRINCIPAL_ID=}" },
     "sentinelAlertRuleId": { "value": "${AZD_SENTINEL_ALERT_RULE_ID=}" },
-    "sentinelAutomationRuleId": { "value": "${AZD_SENTINEL_AUTOMATION_RULE_ID=}" }
+    "sentinelAutomationRuleId": { "value": "${AZD_SENTINEL_AUTOMATION_RULE_ID=}" },
+    "enableSignInAlerts": { "value": "${AZD_ENABLE_SIGNIN_ALERTS}" },
+    "signInLogWorkspaceName": { "value": "${AZD_SIGNIN_LOG_WORKSPACE_NAME=}" },
+    "signInLogWorkspaceResourceGroup": { "value": "${AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP=}" },
+    "signInAlertEmail": { "value": "${AZD_SIGNIN_ALERT_EMAIL=}" },
+    "emergencyUser1ObjectId": { "value": "${AZD_EMERGENCY_USER1_ID=}" },
+    "emergencyUser2ObjectId": { "value": "${AZD_EMERGENCY_USER2_ID=}" }
   }
 }

@@ -1,6 +1,7 @@
 param location string
 param namePrefix string
 param tags object
+@minLength(1)
 param emergencyAccessGroupObjectId string
 param scheduleFrequency string
 param scheduleInterval int

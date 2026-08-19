@@ -15,7 +15,7 @@ function Test-Interactive {
 
 function Get-GraphToken {
     $token = & az account get-access-token --subscription $env:AZURE_SUBSCRIPTION_ID `
-        --tenant $env:AZURE_TENANT_ID --resource-type ms-graph --query accessToken -o tsv
+        --resource-type ms-graph --query accessToken -o tsv
     if ($LASTEXITCODE -ne 0 -or -not $token) {
         throw 'Unable to acquire a Microsoft Graph token. Run az login with the required tenant permissions.'
     }

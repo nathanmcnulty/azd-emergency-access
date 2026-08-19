@@ -9,7 +9,7 @@ Assert-AzdTenantContext
 function Get-AccessToken {
     param([Parameter(Mandatory)][string] $Resource)
     $token = & az account get-access-token --subscription $env:AZURE_SUBSCRIPTION_ID `
-        --tenant $env:AZURE_TENANT_ID --resource $Resource --query accessToken -o tsv
+        --resource $Resource --query accessToken -o tsv
     if ($LASTEXITCODE -ne 0 -or -not $token) {
         throw "Unable to acquire an access token for $Resource."
     }
