@@ -258,7 +258,8 @@ function Ensure-GraphAppRoles {
 }
 
 function Resolve-SentinelServicePrincipal {
-    if ($env:AZD_DEPLOYMENT_MODE -ne 'sentinel-function') {
+    if ($env:AZD_DEPLOYMENT_MODE -ne 'sentinel-function' -and
+        $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -ne 'true') {
         return
     }
 

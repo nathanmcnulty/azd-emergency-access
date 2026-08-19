@@ -39,7 +39,13 @@ function Clear-AzdEnvironmentValue {
     }
 }
 
-if ($env:AZD_OWNED_SENTINEL_ALERT_RULE_ID -or $env:AZD_OWNED_SENTINEL_AUTOMATION_RULE_ID) {
+if ($env:AZD_OWNED_SENTINEL_ALERT_RULE_ID -or
+    $env:AZD_OWNED_SENTINEL_AUTOMATION_RULE_ID -or
+    $env:AZD_OWNED_SENTINEL_SIGNIN_RULE_ID -or
+    $env:AZD_OWNED_SENTINEL_ADMIN_ACTIVITY_RULE_ID -or
+    $env:AZD_OWNED_SENTINEL_ACCOUNT_CHANGE_RULE_ID -or
+    $env:AZD_OWNED_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID -or
+    $env:AZD_OWNED_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID) {
     $armToken = Get-AccessToken 'https://management.azure.com/'
     $armHeaders = @{ Authorization = "Bearer $armToken" }
     $rules = @(
@@ -54,18 +60,57 @@ if ($env:AZD_OWNED_SENTINEL_ALERT_RULE_ID -or $env:AZD_OWNED_SENTINEL_AUTOMATION
             Id = $env:AZD_OWNED_SENTINEL_ALERT_RULE_ID
             Type = 'alertRules'
             ApiVersion = '2024-01-01-preview'
+        },
+        @{
+            Name = 'AZD_OWNED_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID'
+            Id = $env:AZD_OWNED_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID
+            Type = 'automationRules'
+            ApiVersion = '2024-09-01'
+        },
+        @{
+            Name = 'AZD_OWNED_SENTINEL_SIGNIN_RULE_ID'
+            Id = $env:AZD_OWNED_SENTINEL_SIGNIN_RULE_ID
+            Type = 'alertRules'
+            ApiVersion = '2024-01-01-preview'
+        },
+        @{
+            Name = 'AZD_OWNED_SENTINEL_ADMIN_ACTIVITY_RULE_ID'
+            Id = $env:AZD_OWNED_SENTINEL_ADMIN_ACTIVITY_RULE_ID
+            Type = 'alertRules'
+            ApiVersion = '2024-01-01-preview'
+        },
+        @{
+            Name = 'AZD_OWNED_SENTINEL_ACCOUNT_CHANGE_RULE_ID'
+            Id = $env:AZD_OWNED_SENTINEL_ACCOUNT_CHANGE_RULE_ID
+            Type = 'alertRules'
+            ApiVersion = '2024-01-01-preview'
+        },
+        @{
+            Name = 'AZD_OWNED_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID'
+            Id = $env:AZD_OWNED_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID
+            Type = 'roleAssignments'
+            ApiVersion = '2022-04-01'
         }
     )
     foreach ($rule in $rules) {
         if (-not $rule.Id) {
             continue
         }
-        $isOwned = Test-OwnedSentinelResourceId `
-            -ResourceId $rule.Id `
-            -SubscriptionId $env:AZURE_SUBSCRIPTION_ID `
-            -ResourceGroup $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP `
-            -WorkspaceName $env:AZD_SENTINEL_WORKSPACE_NAME `
-            -ResourceType $rule.Type
+        $isOwned = if ($rule.Type -eq 'roleAssignments') {
+            Test-OwnedWorkspaceRoleAssignmentId `
+                -ResourceId $rule.Id `
+                -SubscriptionId $env:AZURE_SUBSCRIPTION_ID `
+                -ResourceGroup $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP `
+                -WorkspaceName $env:AZD_SENTINEL_WORKSPACE_NAME
+        }
+        else {
+            Test-OwnedSentinelResourceId `
+                -ResourceId $rule.Id `
+                -SubscriptionId $env:AZURE_SUBSCRIPTION_ID `
+                -ResourceGroup $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP `
+                -WorkspaceName $env:AZD_SENTINEL_WORKSPACE_NAME `
+                -ResourceType $rule.Type
+        }
         if (-not $isOwned) {
             throw "$($rule.Name) failed ownership validation; refusing cross-scope deletion."
         }
@@ -78,6 +123,9 @@ if ($env:AZD_OWNED_SENTINEL_ALERT_RULE_ID -or $env:AZD_OWNED_SENTINEL_AUTOMATION
             -Uri "https://management.azure.com$($rule.Id)?api-version=$($rule.ApiVersion)" `
             -Headers $armHeaders
         Clear-AzdEnvironmentValue $rule.Name
+        if ($rule.Type -eq 'roleAssignments') {
+            Clear-AzdEnvironmentValue $expectedIdName
+        }
     }
     $armToken = $null
 }

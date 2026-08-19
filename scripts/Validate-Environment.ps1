@@ -85,6 +85,7 @@ Set-AzdDefault AZD_AUTOMATION_TIME_ZONE 'Etc/UTC'
 Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
+Set-AzdDefault AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS 'false'
 if (-not $env:AZD_AUTOMATION_START_TIME) {
     Set-AzdDefault AZD_AUTOMATION_START_TIME (
         [DateTimeOffset]::UtcNow.AddMinutes(15).ToString('yyyy-MM-ddTHH:mm:sszzz')
@@ -128,15 +129,67 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS') {
+foreach ($booleanName in 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
     }
 }
 
+if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
+    if ($env:AZD_SIGNIN_LOG_WORKSPACE_NAME) {
+        Set-AzdDefault AZD_SENTINEL_WORKSPACE_NAME $env:AZD_SIGNIN_LOG_WORKSPACE_NAME
+    }
+    if ($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
+        Set-AzdDefault AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP
+    }
+    if (-not $env:AZD_SENTINEL_TEAMS_WEBHOOK_URL) {
+        throw 'Sentinel activity alerting requires AZD_SENTINEL_TEAMS_WEBHOOK_URL.'
+    }
+    $teamsWebhook = $null
+    if (-not [uri]::TryCreate($env:AZD_SENTINEL_TEAMS_WEBHOOK_URL, [UriKind]::Absolute, [ref]$teamsWebhook) -or
+        $teamsWebhook.Scheme -ne 'https' -or $teamsWebhook.UserInfo) {
+        throw 'AZD_SENTINEL_TEAMS_WEBHOOK_URL must be an absolute HTTPS URL without embedded credentials.'
+    }
+
+    $outlookConnectionId = $env:AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID
+    $sentinelNotificationEmail = $env:AZD_SENTINEL_NOTIFICATION_EMAIL
+    if ([bool]$outlookConnectionId -xor [bool]$sentinelNotificationEmail) {
+        throw 'AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID and AZD_SENTINEL_NOTIFICATION_EMAIL must be supplied together.'
+    }
+    if ($sentinelNotificationEmail) {
+        try {
+            $mailAddress = [System.Net.Mail.MailAddress]::new($sentinelNotificationEmail)
+        }
+        catch {
+            throw 'AZD_SENTINEL_NOTIFICATION_EMAIL must be a valid email address.'
+        }
+        if ($mailAddress.Address -ne $sentinelNotificationEmail) {
+            throw 'AZD_SENTINEL_NOTIFICATION_EMAIL must contain one plain email address without a display name.'
+        }
+        if ($outlookConnectionId -notmatch '^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+/providers/Microsoft\.Web/connections/[^/]+$') {
+            throw 'AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID must be a Microsoft.Web/connections resource ID.'
+        }
+        if (-not $outlookConnectionId.StartsWith("/subscriptions/$($env:AZURE_SUBSCRIPTION_ID)/", [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID must be in AZURE_SUBSCRIPTION_ID.'
+        }
+        $outlookConnection = & az resource show --ids $outlookConnectionId --api-version 2016-06-01 --output json --only-show-errors |
+            ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0 -or -not $outlookConnection) {
+            throw "Outlook API connection '$outlookConnectionId' was not found."
+        }
+        if ($outlookConnection.location -ne $env:AZURE_LOCATION) {
+            throw "The Outlook API connection must be in AZURE_LOCATION '$($env:AZURE_LOCATION)'."
+        }
+        $connectionStatus = @($outlookConnection.properties.statuses)[0].status
+        if ($connectionStatus -notin 'Authenticated', 'Connected', 'Ready') {
+            throw "The Outlook API connection is not authorized; its status is '$connectionStatus'."
+        }
+    }
+}
+
 if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
-    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
         if ($env:AZD_SENTINEL_WORKSPACE_NAME) {
             Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_NAME $env:AZD_SENTINEL_WORKSPACE_NAME
         }
@@ -186,7 +239,7 @@ if ($env:AZD_SCHEDULE_FREQUENCY -notin 'Minute', 'Hour', 'Day', 'Week', 'Month')
     throw 'AZD_SCHEDULE_FREQUENCY must be Minute, Hour, Day, Week, or Month.'
 }
 
-if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     if (-not $env:AZD_SENTINEL_WORKSPACE_NAME -or -not $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP) {
         throw 'Sentinel mode requires AZD_SENTINEL_WORKSPACE_NAME and AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP.'
     }
@@ -195,7 +248,15 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
     $expectedAutomationRuleId = "$workspaceId/providers/Microsoft.SecurityInsights/automationRules/"
     foreach ($ownership in @(
         @{ Name = 'AZD_OWNED_SENTINEL_ALERT_RULE_ID'; ExpectedPrefix = $expectedAlertRuleId },
-        @{ Name = 'AZD_OWNED_SENTINEL_AUTOMATION_RULE_ID'; ExpectedPrefix = $expectedAutomationRuleId }
+        @{ Name = 'AZD_OWNED_SENTINEL_AUTOMATION_RULE_ID'; ExpectedPrefix = $expectedAutomationRuleId },
+        @{ Name = 'AZD_OWNED_SENTINEL_SIGNIN_RULE_ID'; ExpectedPrefix = $expectedAlertRuleId },
+        @{ Name = 'AZD_OWNED_SENTINEL_ADMIN_ACTIVITY_RULE_ID'; ExpectedPrefix = $expectedAlertRuleId },
+        @{ Name = 'AZD_OWNED_SENTINEL_ACCOUNT_CHANGE_RULE_ID'; ExpectedPrefix = $expectedAlertRuleId },
+        @{ Name = 'AZD_OWNED_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID'; ExpectedPrefix = $expectedAutomationRuleId },
+        @{
+            Name = 'AZD_OWNED_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID'
+            ExpectedPrefix = "$workspaceId/providers/Microsoft.Authorization/roleAssignments/"
+        }
     )) {
         $current = [Environment]::GetEnvironmentVariable($ownership.Name)
         if ($current -and -not $current.StartsWith($ownership.ExpectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {

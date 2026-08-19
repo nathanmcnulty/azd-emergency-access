@@ -33,5 +33,19 @@ function Test-OwnedSentinelResourceId {
     return -not $leaf.Contains('/') -and [guid]::TryParse($leaf, [ref]$parsed)
 }
 
-Export-ModuleMember -Function Test-OwnedObjectId, Test-OwnedSentinelResourceId
+function Test-OwnedWorkspaceRoleAssignmentId {
+    param(
+        [string] $ResourceId,
+        [string] $SubscriptionId,
+        [string] $ResourceGroup,
+        [string] $WorkspaceName
+    )
+
+    $escapedPrefix = [regex]::Escape(
+        "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName/providers/Microsoft.Authorization/roleAssignments/"
+    )
+    return $ResourceId -match "(?i)^$escapedPrefix[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+}
+
+Export-ModuleMember -Function Test-OwnedObjectId, Test-OwnedSentinelResourceId, Test-OwnedWorkspaceRoleAssignmentId
 

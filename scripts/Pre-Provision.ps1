@@ -3,21 +3,20 @@ param()
 
 $ErrorActionPreference = 'Stop'
 & "$PSScriptRoot\Validate-Environment.ps1"
-if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
-    function New-DeterministicGuid {
-        param([Parameter(Mandatory)][string] $InputValue)
-        $hash = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($InputValue))
-        $bytes = [byte[]]$hash[0..15]
-        $bytes[7] = ($bytes[7] -band 0x0f) -bor 0x50
-        $bytes[8] = ($bytes[8] -band 0x3f) -bor 0x80
-        return [guid]::new($bytes)
-    }
-    $workspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SENTINEL_WORKSPACE_NAME"
-    $rules = @{
-        AZD_SENTINEL_ALERT_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|emergency-access-nrt")"
-        AZD_SENTINEL_AUTOMATION_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/automationRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|invoke-playbook")"
-    }
-    foreach ($rule in $rules.GetEnumerator()) {
+
+function New-DeterministicGuid {
+    param([Parameter(Mandatory)][string] $InputValue)
+    $hash = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($InputValue))
+    $bytes = [byte[]]$hash[0..15]
+    $bytes[7] = ($bytes[7] -band 0x0f) -bor 0x50
+    $bytes[8] = ($bytes[8] -band 0x3f) -bor 0x80
+    return [guid]::new($bytes)
+}
+
+function Set-OwnedSentinelResourceIds {
+    param([Parameter(Mandatory)][hashtable] $Resources)
+
+    foreach ($rule in $Resources.GetEnumerator()) {
         $ownedName = $rule.Key.Replace('AZD_', 'AZD_OWNED_')
         $ownedValue = [Environment]::GetEnvironmentVariable($ownedName)
         if ($ownedValue -and $ownedValue -ne $rule.Value) {
@@ -31,6 +30,28 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
             [Environment]::SetEnvironmentVariable($name, $rule.Value)
         }
     }
+}
+
+if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
+    $workspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SENTINEL_WORKSPACE_NAME"
+}
+
+if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+    $rules = @{
+        AZD_SENTINEL_ALERT_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|emergency-access-nrt")"
+        AZD_SENTINEL_AUTOMATION_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/automationRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|invoke-playbook")"
+    }
+    Set-OwnedSentinelResourceIds -Resources $rules
+}
+
+if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
+    $activityRules = @{
+        AZD_SENTINEL_SIGNIN_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|activity-signin-nrt")"
+        AZD_SENTINEL_ADMIN_ACTIVITY_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|admin-activity-nrt")"
+        AZD_SENTINEL_ACCOUNT_CHANGE_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|account-change-nrt")"
+        AZD_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID = "$workspaceId/providers/Microsoft.SecurityInsights/automationRules/$(New-DeterministicGuid "$workspaceId|$env:AZURE_ENV_NAME|activity-notifications")"
+    }
+    Set-OwnedSentinelResourceIds -Resources $activityRules
 }
 & "$PSScriptRoot\Bootstrap-Tenant.ps1" -Phase Identities
 if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -and

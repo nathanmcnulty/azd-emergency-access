@@ -28,4 +28,14 @@ Describe 'Cleanup ownership guards' {
             -SubscriptionId sub -ResourceGroup rg -WorkspaceName law `
             -ResourceType alertRules | Should -BeFalse
     }
+
+    It 'accepts only an exact role assignment under the expected workspace' {
+        $id = '/subscriptions/sub/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/law/providers/Microsoft.Authorization/roleAssignments/33333333-3333-3333-3333-333333333333'
+        Test-OwnedWorkspaceRoleAssignmentId -ResourceId $id -SubscriptionId sub `
+            -ResourceGroup rg -WorkspaceName law | Should -BeTrue
+        Test-OwnedWorkspaceRoleAssignmentId -ResourceId $id -SubscriptionId other `
+            -ResourceGroup rg -WorkspaceName law | Should -BeFalse
+        Test-OwnedWorkspaceRoleAssignmentId -ResourceId ($id -replace 'roleAssignments', 'alertRules') `
+            -SubscriptionId sub -ResourceGroup rg -WorkspaceName law | Should -BeFalse
+    }
 }

@@ -23,6 +23,14 @@
     "signInLogWorkspaceName": { "value": "${AZD_SIGNIN_LOG_WORKSPACE_NAME=}" },
     "signInLogWorkspaceResourceGroup": { "value": "${AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP=}" },
     "signInAlertEmail": { "value": "${AZD_SIGNIN_ALERT_EMAIL=}" },
+    "enableSentinelActivityAlerts": { "value": "${AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS}" },
+    "sentinelTeamsWebhookUrl": { "value": "${AZD_SENTINEL_TEAMS_WEBHOOK_URL=}" },
+    "sentinelOutlookConnectionResourceId": { "value": "${AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID=}" },
+    "sentinelNotificationEmail": { "value": "${AZD_SENTINEL_NOTIFICATION_EMAIL=}" },
+    "sentinelSignInRuleId": { "value": "${AZD_SENTINEL_SIGNIN_RULE_ID=}" },
+    "sentinelAdminActivityRuleId": { "value": "${AZD_SENTINEL_ADMIN_ACTIVITY_RULE_ID=}" },
+    "sentinelAccountChangeRuleId": { "value": "${AZD_SENTINEL_ACCOUNT_CHANGE_RULE_ID=}" },
+    "sentinelNotificationAutomationRuleId": { "value": "${AZD_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID=}" },
     "emergencyUser1ObjectId": { "value": "${AZD_EMERGENCY_USER1_ID=}" },
     "emergencyUser2ObjectId": { "value": "${AZD_EMERGENCY_USER2_ID=}" }
   }

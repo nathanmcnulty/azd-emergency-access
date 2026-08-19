@@ -40,6 +40,19 @@ param enableSignInAlerts string = 'false'
 param signInLogWorkspaceName string = ''
 param signInLogWorkspaceResourceGroup string = ''
 param signInAlertEmail string = ''
+@allowed([
+  'true'
+  'false'
+])
+param enableSentinelActivityAlerts string = 'false'
+@secure()
+param sentinelTeamsWebhookUrl string = ''
+param sentinelOutlookConnectionResourceId string = ''
+param sentinelNotificationEmail string = ''
+param sentinelSignInRuleId string = ''
+param sentinelAdminActivityRuleId string = ''
+param sentinelAccountChangeRuleId string = ''
+param sentinelNotificationAutomationRuleId string = ''
 param emergencyUser1ObjectId string = ''
 param emergencyUser2ObjectId string = ''
 var effectiveScheduleStartTime = empty(scheduleStartTime)
@@ -120,6 +133,28 @@ module signInAlerting 'modules/signin-alerting.bicep' = if (enableSignInAlerts =
   }
 }
 
+module sentinelActivityAlerting 'modules/sentinel-activity-alerting.bicep' = if (enableSentinelActivityAlerts == 'true') {
+  name: 'sentinel-activity-alerting'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    workspaceName: sentinelWorkspaceName
+    workspaceResourceGroup: sentinelWorkspaceResourceGroup
+    emergencyUser1ObjectId: emergencyUser1ObjectId
+    emergencyUser2ObjectId: emergencyUser2ObjectId
+    sentinelServicePrincipalId: sentinelServicePrincipalId
+    assignAutomationContributor: deploymentMode != 'sentinel-function'
+    teamsWebhookUrl: sentinelTeamsWebhookUrl
+    outlookConnectionResourceId: sentinelOutlookConnectionResourceId
+    notificationEmail: sentinelNotificationEmail
+    signInRuleName: last(split(sentinelSignInRuleId, '/'))
+    adminActivityRuleName: last(split(sentinelAdminActivityRuleId, '/'))
+    accountChangeRuleName: last(split(sentinelAccountChangeRuleId, '/'))
+    automationRuleName: last(split(sentinelNotificationAutomationRuleId, '/'))
+  }
+}
+
 output AZURE_RESOURCE_GROUP string = resourceGroup().name
 output AZURE_WORKLOAD_PRINCIPAL_IDS string = deploymentMode == 'automation-scheduled'
   ? automation!.outputs.workloadPrincipalId
@@ -140,6 +175,30 @@ output AZURE_SENTINEL_ALERT_RULE_ID string = deploymentMode == 'sentinel-functio
 output AZURE_SENTINEL_AUTOMATION_RULE_ID string = deploymentMode == 'sentinel-function' ? sentinelFunction!.outputs.automationRuleId : ''
 output AZURE_SIGNIN_ALERT_RULE_ID string = enableSignInAlerts == 'true' ? signInAlerting!.outputs.alertRuleId : ''
 output AZURE_SIGNIN_ALERT_ACTION_GROUP_ID string = enableSignInAlerts == 'true' ? signInAlerting!.outputs.actionGroupId : ''
+output AZURE_SENTINEL_ACTIVITY_PLAYBOOK_NAME string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.playbookName
+  : ''
+output AZURE_SENTINEL_ACTIVITY_PLAYBOOK_RESOURCE_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.playbookResourceId
+  : ''
+output AZURE_SENTINEL_ACTIVITY_PLAYBOOK_PRINCIPAL_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.playbookPrincipalId
+  : ''
+output AZURE_SENTINEL_SIGNIN_RULE_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.signInRuleId
+  : ''
+output AZURE_SENTINEL_ADMIN_ACTIVITY_RULE_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.adminActivityRuleId
+  : ''
+output AZURE_SENTINEL_ACCOUNT_CHANGE_RULE_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.accountChangeRuleId
+  : ''
+output AZURE_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.automationRuleId
+  : ''
+output AZURE_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.sentinelReaderRoleAssignmentId
+  : ''
 output AZURE_WORKLOAD_RESOURCE_NAME string = deploymentMode == 'automation-scheduled'
   ? automation!.outputs.workloadResourceName
   : deploymentMode == 'function-scheduled'
