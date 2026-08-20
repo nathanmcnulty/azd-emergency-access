@@ -19,6 +19,38 @@ if ($LASTEXITCODE -ne 0 -or -not $token) {
 }
 $headers = @{ Authorization = "Bearer $token" }
 
+function Remove-ConditionalAccessGroupReferences {
+    param([Parameter(Mandatory)][string] $GroupId)
+
+    $nextLink = 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies'
+    while ($nextLink) {
+        $page = Invoke-RestMethod -Method GET -Uri $nextLink -Headers $headers
+        foreach ($policy in @($page.value)) {
+            $excludeGroups = @($policy.conditions.users.excludeGroups) | Where-Object { $_ }
+            if ($GroupId -notin $excludeGroups) {
+                continue
+            }
+
+            $remainingGroups = @($excludeGroups | Where-Object { $_ -ne $GroupId } | Select-Object -Unique)
+            $body = @{
+                conditions = @{
+                    users = @{
+                        excludeGroups = $remainingGroups
+                    }
+                }
+            } | ConvertTo-Json -Depth 6 -Compress
+            Invoke-RestMethod `
+                -Method PATCH `
+                -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($policy.id)" `
+                -Headers $headers `
+                -ContentType 'application/json' `
+                -Body $body | Out-Null
+        }
+        $nextLinkProperty = $page.PSObject.Properties['@odata.nextLink']
+        $nextLink = if ($nextLinkProperty) { [string]$nextLinkProperty.Value } else { '' }
+    }
+}
+
 $objects = @(
     @{
         Ownership = 'AZD_OWNED_ADMINISTRATIVE_UNIT_ID'
@@ -55,6 +87,9 @@ $objects = @(
 foreach ($object in $objects) {
     if (Test-OwnedObjectId -CurrentId $object.CurrentId -OwnedId $object.OwnedId) {
         if ($PSCmdlet.ShouldProcess($object.OwnedId, "Delete object recorded by $($object.Ownership)")) {
+            if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
+                Remove-ConditionalAccessGroupReferences -GroupId $object.OwnedId
+            }
             Invoke-RestMethod -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)" -Headers $headers
             & azd env set $object.Ownership '' | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Unable to clear $($object.Ownership)." }

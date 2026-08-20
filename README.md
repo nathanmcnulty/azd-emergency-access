@@ -356,7 +356,7 @@ Normal Azure cleanup intentionally does not delete emergency tenant identities. 
 ./scripts/Remove-TenantObjects.ps1 -DeleteObjectsCreatedByThisEnvironment
 ```
 
-PowerShell confirmation is required. Review the resolved and owned IDs first. The script never deletes supplied or reused users, groups, administrative units, API applications/service principals, mismatched IDs, unrelated workspaces, or untracked tenant objects. Do not replace the ownership-aware scripts with broad Graph or directory cleanup commands. Remove permanent role assignments and authentication methods according to your change process before or after deletion as required.
+PowerShell confirmation is required. Review the resolved and owned IDs first. Before deleting an exact-owned emergency group, the script removes that group ID from every Conditional Access policy exclusion so no stale deleted-object reference remains. The script never deletes supplied or reused users, groups, administrative units, API applications/service principals, mismatched IDs, unrelated workspaces, or untracked tenant objects. Do not replace the ownership-aware scripts with broad Graph or directory cleanup commands. Remove permanent role assignments and authentication methods according to your change process before or after deletion as required.
 
 ## Troubleshooting
 

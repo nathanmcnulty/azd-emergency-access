@@ -101,6 +101,13 @@ Describe 'Lifecycle security wiring' {
         $logicApp | Should -Match "'None'"
     }
 
+    It 'removes the exact-owned emergency group from Conditional Access before tenant deletion' {
+        $cleanup = Get-Content "$PSScriptRoot\..\scripts\Remove-TenantObjects.ps1" -Raw
+        $cleanup | Should -Match 'function Remove-ConditionalAccessGroupReferences'
+        $cleanup | Should -Match 'excludeGroups = \$remainingGroups'
+        $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-RestMethod -Method DELETE'
+    }
+
     It 'fails closed when Sentinel Function authentication is absent' {
         $sentinelBicep | Should -Match '@minLength\(1\)\s*param functionAuthClientId string'
         $sentinelBicep | Should -Match '@minLength\(1\)\s*param functionAuthAudience string'
