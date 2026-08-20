@@ -15,7 +15,7 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
     type: 'SystemAssigned'
   }
   properties: {
-    state: 'Enabled'
+    state: 'Disabled'
     definition: {
       '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
       contentVersion: '1.0.0.0'
@@ -145,6 +145,14 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
               type: 'If'
               expression: {
                 and: [
+                  {
+                    not: {
+                      contains: [
+                        '@coalesce(items(\'Remediate_each_policy\')?[\'conditions\']?[\'users\']?[\'includeUsers\'], json(\'[]\'))'
+                        'None'
+                      ]
+                    }
+                  }
                   {
                     not: {
                       contains: [

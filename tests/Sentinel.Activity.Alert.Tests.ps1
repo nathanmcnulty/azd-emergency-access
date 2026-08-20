@@ -46,6 +46,24 @@ Describe 'Optional Sentinel emergency activity alerting' {
         $validate | Should -Match 'The Outlook API connection is not authorized'
     }
 
+    It 'supports an authorized Teams API connection as an alternative to a webhook' {
+        $main | Should -Match "param sentinelTeamsDeliveryMode string = 'workflow-webhook'"
+        $parameters | Should -Match 'AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID='
+        $alerting | Should -Match "teamsDeliveryMode == 'api-connection'"
+        $alerting | Should -Match "Post_message_to_Teams_channel"
+        $alerting | Should -Match '/beta/teams/conversation/message/poster/'
+        $validate | Should -Match 'The Teams API connection is not authorized'
+        $validate | Should -Match 'Teams API connection inputs must be empty when workflow-webhook delivery is selected'
+    }
+
+    It 'can scaffold a disabled Teams playbook for an administrator to authorize' {
+        $main | Should -Match "'admin-configured'"
+        $alerting | Should -Match "teamsDeliveryMode == 'admin-configured' \? 'Disabled' : 'Enabled'"
+        $alerting | Should -Match "resource adminTeamsConnection 'Microsoft.Web/connections@2016-06-01'"
+        $main | Should -Match 'AZURE_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID'
+        $validate | Should -Match 'Admin-configured delivery requires the team ID and channel ID'
+    }
+
     It 'records and removes every cross-resource-group Sentinel object by exact ID' {
         foreach ($name in @(
             'SENTINEL_SIGNIN_RULE_ID',

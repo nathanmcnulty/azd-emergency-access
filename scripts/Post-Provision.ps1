@@ -52,6 +52,18 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
 
 & "$PSScriptRoot\Bootstrap-Tenant.ps1" -Phase Workload
 
+if ($env:AZD_DEPLOYMENT_MODE -eq 'logicapp-scheduled') {
+    $workflowId = "/subscriptions/$($env:AZURE_SUBSCRIPTION_ID)/resourceGroups/$($env:AZURE_RESOURCE_GROUP)/providers/Microsoft.Logic/workflows/$($env:AZURE_WORKLOAD_RESOURCE_NAME)"
+    & az resource update `
+        --ids $workflowId `
+        --api-version 2019-05-01 `
+        --set properties.state=Enabled `
+        --only-show-errors | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Graph roles were granted, but scheduled Logic App '$($env:AZURE_WORKLOAD_RESOURCE_NAME)' could not be enabled."
+    }
+}
+
 if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     $sentinelPrincipalId = & az ad sp list `
         --display-name 'Azure Security Insights' `

@@ -28,7 +28,7 @@ All Graph access uses managed identity. The template does not create a Key Vault
 - Microsoft Graph delegated consent sufficient to create/read the selected tenant objects and assign Graph app roles. TAP configuration also requires authentication-method policy and user-authentication-method permissions.
 - For `sentinel-function`, an existing Log Analytics workspace with Microsoft Sentinel enabled and Entra `AuditLogs` ingestion.
 - For optional Azure Monitor sign-in alerting, an existing Log Analytics workspace receiving the tenant's Entra `SigninLogs` and an email address for notifications.
-- For optional Sentinel activity alerting, an existing Sentinel-enabled workspace receiving both `SigninLogs` and `AuditLogs`, plus a Microsoft Teams Workflow webhook. Optional playbook email requires an existing authorized Office 365 Outlook Logic Apps connection in the deployment region.
+- For optional Sentinel activity alerting, an existing Sentinel-enabled workspace receiving both `SigninLogs` and `AuditLogs`, plus either a Microsoft Teams Workflow webhook or an authorized Teams Logic Apps API connection. Optional playbook email requires an existing authorized Office 365 Outlook Logic Apps connection in the deployment region.
 
 Initialize and select an environment:
 
@@ -108,7 +108,7 @@ This independent capability works with any remediation mode. It creates three Se
 - Every Entra audit event initiated by either emergency account, preserving the operation, result, service, and correlation ID for investigation.
 - Every Entra audit event that names either emergency account as a target, including credential, role, permission, or account changes made by someone else.
 
-Each matching event creates its own high-severity Sentinel alert and incident. An incident-created automation rule invokes a managed-identity playbook, which posts an Adaptive Card to a Teams Workflow webhook. This keeps SOC incident history and Teams delivery separate from the Azure Monitor action-group path.
+Each matching event creates its own high-severity Sentinel alert and incident. An incident-created automation rule invokes a managed-identity playbook, which posts through the selected Teams delivery method. This keeps SOC incident history and Teams delivery separate from the Azure Monitor action-group path.
 
 In Teams, create a Workflow using **When a Teams webhook request is received** and a channel-posting action, assign at least two durable owners, select the intended channel, and copy its callback URL. The playbook calls the webhook without an Entra token, so configure the workflow to accept calls from anyone and treat the callback URL as a secret. Do not use a legacy Office 365 incoming webhook; Microsoft is retiring that connector model.
 
@@ -124,6 +124,26 @@ azd up
 
 The Teams Workflow webhook is the default because it avoids a second user-authorized Teams API connection and matches the low-volume, one-way channel-delivery requirement. Its URL grants posting capability, however, and the Power Automate workflow is owner-bound. Rotate the URL if exposed and periodically verify its owners and enabled state.
 
+Alternatively, select an existing authorized Teams Logic Apps connection and provide the target IDs. The connection must use the Teams managed API in `AZURE_LOCATION` and the same Azure subscription:
+
+```powershell
+azd env set AZD_SENTINEL_TEAMS_DELIVERY_MODE api-connection
+azd env set AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID '/subscriptions/<subscription>/resourceGroups/<resource-group>/providers/Microsoft.Web/connections/<connection>'
+azd env set AZD_SENTINEL_TEAMS_TEAM_ID '<team ID>'
+azd env set AZD_SENTINEL_TEAMS_CHANNEL_ID '<channel ID>'
+```
+
+If the deployment operator must not grant delegated consent, scaffold the connection for a Teams administrator instead. This deploys the Teams connection and the playbook in a disabled state:
+
+```powershell
+azd env set AZD_SENTINEL_TEAMS_DELIVERY_MODE admin-configured
+azd env set AZD_SENTINEL_TEAMS_TEAM_ID '<team ID>'
+azd env set AZD_SENTINEL_TEAMS_CHANNEL_ID '<channel ID>'
+azd up
+```
+
+An administrator then opens the emitted `AZURE_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID` in Azure, authorizes the Teams connection, changes the mode to `api-connection`, sets that resource ID in `AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID`, and runs `azd up` again. The second deployment validates the authorization and enables the playbook. This explicit transition keeps incidents from producing failed notification runs while consent is incomplete.
+
 The Sentinel playbook can also send high-importance email through an existing, authorized Office 365 Outlook API connection. Supply both values or neither:
 
 ```powershell
@@ -133,7 +153,11 @@ azd env set AZD_SENTINEL_NOTIFICATION_EMAIL identity-operations@contoso.com
 
 The connection must be in `AZURE_LOCATION` and report an authorized status. This template deliberately does not create or silently authorize a user-bound Outlook connection. Keep Azure Monitor Action Group email enabled as the simpler independent path; if both paths use the same recipient, that recipient will receive one Azure Monitor message and one Sentinel incident message.
 
-For an organization that prohibits bearer-style webhook URLs, use a preauthorized Teams Logic Apps API connection owned by a dedicated automation account, as demonstrated by `azd-entra-health-monitoring`. That pattern provides an explicit connection resource and channel IDs but adds interactive delegated consent and connection-owner lifecycle. Normal Microsoft Graph channel posting is not a managed-identity substitute because application permission is limited to migration scenarios. A polling Function is intentionally not deployed: once `SigninLogs` and `AuditLogs` are in Sentinel, polling adds checkpoint, overlap, deduplication, retry, and Graph `AuditLog.Read.All` responsibilities without improving detection quality. Consider Event Hub plus a Function only for cross-tenant routing, third-party destinations, or custom correlation that Sentinel and Logic Apps cannot provide.
+The API-connection option is suitable for an organization that prohibits bearer-style webhook URLs and is demonstrated by `azd-entra-health-monitoring`. It provides an explicit connection resource and channel IDs but adds interactive delegated consent and connection-owner lifecycle. Normal Microsoft Graph channel posting is not a managed-identity substitute because application permission is limited to migration scenarios. A polling Function is intentionally not deployed: once `SigninLogs` and `AuditLogs` are in Sentinel, polling adds checkpoint, overlap, deduplication, retry, and Graph `AuditLog.Read.All` responsibilities without improving detection quality. Consider Event Hub plus a Function only for cross-tenant routing, third-party destinations, or custom correlation that Sentinel and Logic Apps cannot provide.
+
+For a Teams sender with no user OAuth or owner dependency at runtime, use a proactive Teams bot as a separate notification adapter. The bot authenticates as an application, but it must be hosted, published or approved in the tenant app catalog, installed in the target team, and retain the conversation reference needed for proactive messages. That operational cost is substantially higher than the built-in `admin-configured` handoff and is best reserved for tenants with a strict application-identity requirement. Direct Microsoft Graph channel posting is not a shortcut: its application permission is supported only for migration scenarios.
+
+For app-only email, Azure Communication Services Email can send with a managed identity after an Email Communication Services domain and sender are configured. This template keeps Azure Monitor Action Group email as the default because it has no mailbox OAuth connection and no additional mail-domain infrastructure. Add Azure Communication Services only when branded sending, application-controlled content, or centralized app-only delivery justifies that extra service.
 
 ## Architecture
 
@@ -196,7 +220,7 @@ flowchart LR
   NRT --> Incident[One incident per event]
   Incident --> Automation[Incident-created automation rule]
   Automation --> Playbook[Managed-identity Logic App]
-  Playbook --> Teams[Teams Workflow webhook]
+  Playbook --> Teams[Teams Workflow webhook or API connection]
   Playbook -. optional .-> Outlook[Authorized Outlook connection]
 ```
 
@@ -230,7 +254,11 @@ AuditLogs
 | `AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP` | Sentinel workspace resource group in Sentinel mode | When alerts enabled | Resource group containing the sign-in-log workspace |
 | `AZD_SIGNIN_ALERT_EMAIL` | none | When alerts enabled | One plain email address for the deployed action group |
 | `AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS` | `false` | Always | Deploy optional Sentinel sign-in, admin-activity, and account-change detections plus notifications |
-| `AZD_SENTINEL_TEAMS_WEBHOOK_URL` | none | When Sentinel activity alerts enabled | Secret Teams Workflow callback URL for the target channel |
+| `AZD_SENTINEL_TEAMS_DELIVERY_MODE` | `workflow-webhook` | With Sentinel activity alerts | `workflow-webhook`, `api-connection`, or `admin-configured` |
+| `AZD_SENTINEL_TEAMS_WEBHOOK_URL` | none | Webhook mode | Secret Teams Workflow callback URL for the target channel |
+| `AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID` | none | API-connection mode | Existing authorized Teams Logic Apps connection |
+| `AZD_SENTINEL_TEAMS_TEAM_ID` | none | API-connection mode | Target Microsoft Teams team ID |
+| `AZD_SENTINEL_TEAMS_CHANNEL_ID` | none | API-connection mode | Target Microsoft Teams channel ID |
 | `AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID` | none | No | Existing authorized Office 365 Outlook Logic Apps connection for optional playbook email |
 | `AZD_SENTINEL_NOTIFICATION_EMAIL` | none | With Outlook connection | One plain recipient address for Sentinel playbook email |
 | `AZD_SCHEDULE_CRON` | `0 0 */6 * * *` | Function mode | Six-field NCRONTAB timer schedule |
@@ -337,7 +365,7 @@ PowerShell confirmation is required. Review the resolved and owned IDs first. Th
 - **Function returns 401/403:** confirm the playbook uses managed identity, Easy Auth is enabled, and its principal is authorized for the Function application.
 - **Sentinel automation does not run:** confirm Sentinel onboarding, `AuditLogs` ingestion, NRT rule health, Automation Contributor at playbook RG scope, and the automation rule's analytics-rule condition.
 - **Sentinel activity notification does not run:** confirm both `SigninLogs` and `AuditLogs` are in the Analytics tier, the playbook identity has Microsoft Sentinel Reader on the workspace, the automation rule triggers on incident creation, and Microsoft Sentinel has Automation Contributor on the playbook resource group.
-- **Teams card does not arrive:** confirm the Teams Workflow is enabled, still has active owners, accepts unauthenticated webhook calls, targets the intended channel, and has not had its callback URL rotated. Inspect the Logic App HTTP action status without printing the webhook URL.
+- **Teams message does not arrive:** for webhook mode, confirm the Workflow is enabled, has active owners, accepts unauthenticated calls, and has not rotated its URL. For API-connection mode, reauthorize the connection owner and verify the team/channel IDs and membership. Inspect the failed Logic App action without printing secrets.
 - **Sentinel playbook email fails:** open the supplied Office 365 Outlook API connection and reauthorize it as the dedicated automation account; the deployment rejects connections that are missing, in another region, or report an unauthenticated status.
 - **Sign-in alert deployment/query fails:** confirm the selected workspace exists, receives this tenant's `SigninLogs`, and the deployer can read the workspace and create scheduled-query rules/action groups in the environment resource group.
 - **Sign-in alert email does not arrive:** confirm the action group is enabled, the email address is correct, mail filtering permits Azure Monitor notifications, and the sign-in record landed inside the queried five-minute window.

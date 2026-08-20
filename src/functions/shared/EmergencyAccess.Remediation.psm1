@@ -68,6 +68,18 @@ function Invoke-EmergencyAccessRemediation {
 
     foreach ($policy in $policies) {
         $policyId = [string]$policy.id
+        $userConditions = $policy.conditions.users
+        $includeUsers = if ($userConditions -is [Collections.IDictionary]) {
+            @($userConditions['includeUsers'])
+        }
+        else {
+            $includeUsersProperty = $userConditions.PSObject.Properties['includeUsers']
+            if ($includeUsersProperty) { @($includeUsersProperty.Value) } else { @() }
+        }
+        if ('None' -in $includeUsers) {
+            $unchanged.Add($policyId)
+            continue
+        }
         $current = @(
             @($policy.conditions.users.excludeGroups) |
                 Where-Object { $_ } |

@@ -86,6 +86,7 @@ Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
 Set-AzdDefault AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS 'false'
+Set-AzdDefault AZD_SENTINEL_TEAMS_DELIVERY_MODE 'workflow-webhook'
 if (-not $env:AZD_AUTOMATION_START_TIME) {
     Set-AzdDefault AZD_AUTOMATION_START_TIME (
         [DateTimeOffset]::UtcNow.AddMinutes(15).ToString('yyyy-MM-ddTHH:mm:sszzz')
@@ -143,13 +144,56 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     if ($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
         Set-AzdDefault AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP
     }
-    if (-not $env:AZD_SENTINEL_TEAMS_WEBHOOK_URL) {
-        throw 'Sentinel activity alerting requires AZD_SENTINEL_TEAMS_WEBHOOK_URL.'
+    if ($env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -notin 'workflow-webhook', 'api-connection', 'admin-configured') {
+        throw 'AZD_SENTINEL_TEAMS_DELIVERY_MODE must be workflow-webhook, api-connection, or admin-configured.'
     }
-    $teamsWebhook = $null
-    if (-not [uri]::TryCreate($env:AZD_SENTINEL_TEAMS_WEBHOOK_URL, [UriKind]::Absolute, [ref]$teamsWebhook) -or
-        $teamsWebhook.Scheme -ne 'https' -or $teamsWebhook.UserInfo) {
-        throw 'AZD_SENTINEL_TEAMS_WEBHOOK_URL must be an absolute HTTPS URL without embedded credentials.'
+    if ($env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -eq 'workflow-webhook') {
+        if (-not $env:AZD_SENTINEL_TEAMS_WEBHOOK_URL) {
+            throw 'Workflow-webhook delivery requires AZD_SENTINEL_TEAMS_WEBHOOK_URL.'
+        }
+        if ($env:AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID -or
+            $env:AZD_SENTINEL_TEAMS_TEAM_ID -or $env:AZD_SENTINEL_TEAMS_CHANNEL_ID) {
+            throw 'Teams API connection inputs must be empty when workflow-webhook delivery is selected.'
+        }
+        $teamsWebhook = $null
+        if (-not [uri]::TryCreate($env:AZD_SENTINEL_TEAMS_WEBHOOK_URL, [UriKind]::Absolute, [ref]$teamsWebhook) -or
+            $teamsWebhook.Scheme -ne 'https' -or $teamsWebhook.UserInfo) {
+            throw 'AZD_SENTINEL_TEAMS_WEBHOOK_URL must be an absolute HTTPS URL without embedded credentials.'
+        }
+    }
+    elseif ($env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -eq 'api-connection') {
+        if ($env:AZD_SENTINEL_TEAMS_WEBHOOK_URL) {
+            throw 'AZD_SENTINEL_TEAMS_WEBHOOK_URL must be empty when api-connection delivery is selected.'
+        }
+        if (-not $env:AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID -or
+            -not $env:AZD_SENTINEL_TEAMS_TEAM_ID -or -not $env:AZD_SENTINEL_TEAMS_CHANNEL_ID) {
+            throw 'API-connection delivery requires the Teams connection resource ID, team ID, and channel ID.'
+        }
+        $teamsConnectionId = $env:AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID
+        if ($teamsConnectionId -notmatch '^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+/providers/Microsoft\.Web/connections/[^/]+$' -or
+            -not $teamsConnectionId.StartsWith("/subscriptions/$($env:AZURE_SUBSCRIPTION_ID)/", [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID must be a Microsoft.Web/connections resource in AZURE_SUBSCRIPTION_ID.'
+        }
+        $teamsConnection = & az resource show --ids $teamsConnectionId --api-version 2016-06-01 --output json --only-show-errors |
+            ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0 -or -not $teamsConnection) {
+            throw "Teams API connection '$teamsConnectionId' was not found."
+        }
+        if ($teamsConnection.location -ne $env:AZURE_LOCATION -or $teamsConnection.properties.api.name -ne 'teams') {
+            throw "The Teams API connection must use the Teams managed API in AZURE_LOCATION '$($env:AZURE_LOCATION)'."
+        }
+        $teamsConnectionStatus = @($teamsConnection.properties.statuses)[0].status
+        if ($teamsConnectionStatus -notin 'Authenticated', 'Connected', 'Ready') {
+            throw "The Teams API connection is not authorized; its status is '$teamsConnectionStatus'."
+        }
+    }
+    else {
+        if ($env:AZD_SENTINEL_TEAMS_WEBHOOK_URL -or $env:AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID) {
+            throw 'Teams webhook and connection resource ID must be empty when admin-configured delivery is selected.'
+        }
+        if (-not $env:AZD_SENTINEL_TEAMS_TEAM_ID -or -not $env:AZD_SENTINEL_TEAMS_CHANNEL_ID) {
+            throw 'Admin-configured delivery requires the team ID and channel ID.'
+        }
     }
 
     $outlookConnectionId = $env:AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID

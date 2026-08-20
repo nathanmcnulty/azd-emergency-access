@@ -50,6 +50,22 @@ Describe 'Invoke-EmergencyAccessRemediation' {
             -ParameterFilter { $Method -eq 'PATCH' }
     }
 
+    It 'does not patch a non-user policy whose user target is None' {
+        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
+            $Method -eq 'GET'
+        } -MockWith {
+            @{ value = @(@{ id = $policy1; conditions = @{ users = @{ includeUsers = @('None'); excludeGroups = @() } } }) }
+        }
+
+        $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
+            -SkipManagedIdentityConnection
+
+        $result.policiesUpdated | Should -Be 0
+        $result.policiesAlreadyExcluded | Should -Be 1
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 0 `
+            -ParameterFilter { $Method -eq 'PATCH' }
+    }
+
     It 'preserves and deduplicates existing exclusions' {
         $existingId = '44444444-4444-4444-4444-444444444444'
         $script:patchedBody = $null

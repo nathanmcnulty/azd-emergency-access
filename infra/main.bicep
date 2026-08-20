@@ -47,6 +47,15 @@ param signInAlertEmail string = ''
 param enableSentinelActivityAlerts string = 'false'
 @secure()
 param sentinelTeamsWebhookUrl string = ''
+@allowed([
+  'workflow-webhook'
+  'api-connection'
+  'admin-configured'
+])
+param sentinelTeamsDeliveryMode string = 'workflow-webhook'
+param sentinelTeamsConnectionResourceId string = ''
+param sentinelTeamsTeamId string = ''
+param sentinelTeamsChannelId string = ''
 param sentinelOutlookConnectionResourceId string = ''
 param sentinelNotificationEmail string = ''
 param sentinelSignInRuleId string = ''
@@ -146,6 +155,10 @@ module sentinelActivityAlerting 'modules/sentinel-activity-alerting.bicep' = if 
     sentinelServicePrincipalId: sentinelServicePrincipalId
     assignAutomationContributor: deploymentMode != 'sentinel-function'
     teamsWebhookUrl: sentinelTeamsWebhookUrl
+    teamsDeliveryMode: sentinelTeamsDeliveryMode
+    teamsConnectionResourceId: sentinelTeamsConnectionResourceId
+    teamsTeamId: sentinelTeamsTeamId
+    teamsChannelId: sentinelTeamsChannelId
     outlookConnectionResourceId: sentinelOutlookConnectionResourceId
     notificationEmail: sentinelNotificationEmail
     signInRuleName: last(split(sentinelSignInRuleId, '/'))
@@ -198,6 +211,9 @@ output AZURE_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID string = enableSentinelAct
   : ''
 output AZURE_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID string = enableSentinelActivityAlerts == 'true'
   ? sentinelActivityAlerting!.outputs.sentinelReaderRoleAssignmentId
+  : ''
+output AZURE_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID string = enableSentinelActivityAlerts == 'true'
+  ? sentinelActivityAlerting!.outputs.teamsConnectionResourceId
   : ''
 output AZURE_WORKLOAD_RESOURCE_NAME string = deploymentMode == 'automation-scheduled'
   ? automation!.outputs.workloadResourceName

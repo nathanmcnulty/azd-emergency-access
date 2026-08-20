@@ -9,6 +9,15 @@ param sentinelServicePrincipalId string
 param assignAutomationContributor bool
 @secure()
 param teamsWebhookUrl string
+@allowed([
+  'workflow-webhook'
+  'api-connection'
+  'admin-configured'
+])
+param teamsDeliveryMode string
+param teamsConnectionResourceId string = ''
+param teamsTeamId string = ''
+param teamsChannelId string = ''
 param outlookConnectionResourceId string = ''
 param notificationEmail string = ''
 param signInRuleName string
@@ -21,7 +30,28 @@ var playbookName = '${namePrefix}-activity-playbook'
 var playbookIdentityId = resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', playbookIdentityName)
 var sentinelManagedApiId = subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azuresentinel')
 var outlookManagedApiId = subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'office365')
+var teamsManagedApiId = subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'teams')
 var outlookConnectionName = empty(outlookConnectionResourceId) ? '' : last(split(outlookConnectionResourceId, '/'))
+var teamsConnectionName = empty(teamsConnectionResourceId) ? '' : last(split(teamsConnectionResourceId, '/'))
+
+resource adminTeamsConnection 'Microsoft.Web/connections@2016-06-01' = if (teamsDeliveryMode == 'admin-configured') {
+  name: '${namePrefix}-activity-teams'
+  location: location
+  tags: tags
+  properties: {
+    displayName: '${namePrefix} Teams activity notifications'
+    api: {
+      id: teamsManagedApiId
+    }
+  }
+}
+
+var effectiveTeamsConnectionId = teamsDeliveryMode == 'admin-configured'
+  ? adminTeamsConnection.id
+  : teamsConnectionResourceId
+var effectiveTeamsConnectionName = teamsDeliveryMode == 'admin-configured'
+  ? adminTeamsConnection.name
+  : teamsConnectionName
 
 module playbookIdentity 'identity.bicep' = {
   name: 'activity-playbook-identity'
@@ -60,6 +90,15 @@ var connections = union(
       id: sentinelManagedApiId
     }
   },
+  teamsDeliveryMode == 'api-connection' || teamsDeliveryMode == 'admin-configured'
+    ? {
+        teams: {
+          connectionId: effectiveTeamsConnectionId
+          connectionName: effectiveTeamsConnectionName
+          id: teamsManagedApiId
+        }
+      }
+    : {},
   empty(outlookConnectionResourceId)
     ? {}
     : {
@@ -71,7 +110,7 @@ var connections = union(
       }
 )
 
-var teamsAction = {
+var teamsWebhookAction = teamsDeliveryMode == 'workflow-webhook' ? {
   Post_adaptive_card_to_Teams: {
     type: 'Http'
     inputs: {
@@ -135,7 +174,30 @@ var teamsAction = {
     }
     runAfter: {}
   }
-}
+} : {}
+
+var teamsConnectionAction = teamsDeliveryMode == 'api-connection' || teamsDeliveryMode == 'admin-configured' ? {
+  Post_message_to_Teams_channel: {
+    type: 'ApiConnection'
+    inputs: {
+      host: {
+        connection: {
+          name: '@parameters(\'$connections\')[\'teams\'][\'connectionId\']'
+        }
+      }
+      method: 'post'
+      path: '/beta/teams/conversation/message/poster/@{encodeURIComponent(\'User\')}/location/@{encodeURIComponent(\'Channel\')}'
+      body: {
+        recipient: {
+          groupId: teamsTeamId
+          channelId: teamsChannelId
+        }
+        messageBody: '@concat(\'<p><strong>\', triggerBody()?[\'object\']?[\'properties\']?[\'title\'], \'</strong></p><p>Severity: \', triggerBody()?[\'object\']?[\'properties\']?[\'severity\'], \'</p><p>\', triggerBody()?[\'object\']?[\'properties\']?[\'description\'], \'</p><p><a href="\', triggerBody()?[\'object\']?[\'properties\']?[\'incidentUrl\'], \'">Open Microsoft Sentinel incident</a></p>\')'
+      }
+    }
+    runAfter: {}
+  }
+} : {}
 
 var emailAction = empty(outlookConnectionResourceId)
   ? {}
@@ -172,7 +234,7 @@ resource playbook 'Microsoft.Logic/workflows@2019-05-01' = {
     }
   }
   properties: {
-    state: 'Enabled'
+    state: teamsDeliveryMode == 'admin-configured' ? 'Disabled' : 'Enabled'
     parameters: {
       teamsWebhookUrl: {
         value: teamsWebhookUrl
@@ -209,7 +271,7 @@ resource playbook 'Microsoft.Logic/workflows@2019-05-01' = {
           }
         }
       }
-      actions: union(teamsAction, emailAction)
+      actions: union(teamsWebhookAction, teamsConnectionAction, emailAction)
       outputs: {}
     }
   }
@@ -259,3 +321,6 @@ output adminActivityRuleId string = activityRules.outputs.adminActivityRuleId
 output accountChangeRuleId string = activityRules.outputs.accountChangeRuleId
 output automationRuleId string = activityRules.outputs.automationRuleId
 output sentinelReaderRoleAssignmentId string = activityRules.outputs.sentinelReaderRoleAssignmentId
+output teamsConnectionResourceId string = teamsDeliveryMode == 'admin-configured'
+  ? adminTeamsConnection.id
+  : teamsConnectionResourceId

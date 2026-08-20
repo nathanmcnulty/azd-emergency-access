@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "17049032317586620054"
+      "templateHash": "2911750453733872634"
     }
   },
   "parameters": {
@@ -126,6 +126,27 @@
     },
     "sentinelTeamsWebhookUrl": {
       "type": "securestring",
+      "defaultValue": ""
+    },
+    "sentinelTeamsDeliveryMode": {
+      "type": "string",
+      "defaultValue": "workflow-webhook",
+      "allowedValues": [
+        "workflow-webhook",
+        "api-connection",
+        "admin-configured"
+      ]
+    },
+    "sentinelTeamsConnectionResourceId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "sentinelTeamsTeamId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "sentinelTeamsChannelId": {
+      "type": "string",
       "defaultValue": ""
     },
     "sentinelOutlookConnectionResourceId": {
@@ -1474,7 +1495,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "17457847557523101223"
+              "templateHash": "9643908492267858585"
             }
           },
           "parameters": {
@@ -1512,7 +1533,7 @@
                 "type": "SystemAssigned"
               },
               "properties": {
-                "state": "Enabled",
+                "state": "Disabled",
                 "definition": {
                   "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
                   "contentVersion": "1.0.0.0",
@@ -1642,6 +1663,14 @@
                           "type": "If",
                           "expression": {
                             "and": [
+                              {
+                                "not": {
+                                  "contains": [
+                                    "@coalesce(items('Remediate_each_policy')?['conditions']?['users']?['includeUsers'], json('[]'))",
+                                    "None"
+                                  ]
+                                }
+                              },
                               {
                                 "not": {
                                   "contains": [
@@ -3170,6 +3199,18 @@
           "teamsWebhookUrl": {
             "value": "[parameters('sentinelTeamsWebhookUrl')]"
           },
+          "teamsDeliveryMode": {
+            "value": "[parameters('sentinelTeamsDeliveryMode')]"
+          },
+          "teamsConnectionResourceId": {
+            "value": "[parameters('sentinelTeamsConnectionResourceId')]"
+          },
+          "teamsTeamId": {
+            "value": "[parameters('sentinelTeamsTeamId')]"
+          },
+          "teamsChannelId": {
+            "value": "[parameters('sentinelTeamsChannelId')]"
+          },
           "outlookConnectionResourceId": {
             "value": "[parameters('sentinelOutlookConnectionResourceId')]"
           },
@@ -3196,7 +3237,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "11256688692393342612"
+              "templateHash": "11286776391475158874"
             }
           },
           "parameters": {
@@ -3231,6 +3272,26 @@
             "teamsWebhookUrl": {
               "type": "securestring"
             },
+            "teamsDeliveryMode": {
+              "type": "string",
+              "allowedValues": [
+                "workflow-webhook",
+                "api-connection",
+                "admin-configured"
+              ]
+            },
+            "teamsConnectionResourceId": {
+              "type": "string",
+              "defaultValue": ""
+            },
+            "teamsTeamId": {
+              "type": "string",
+              "defaultValue": ""
+            },
+            "teamsChannelId": {
+              "type": "string",
+              "defaultValue": ""
+            },
             "outlookConnectionResourceId": {
               "type": "string",
               "defaultValue": ""
@@ -3258,76 +3319,31 @@
             "playbookIdentityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('playbookIdentityName'))]",
             "sentinelManagedApiId": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('location'), 'azuresentinel')]",
             "outlookManagedApiId": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('location'), 'office365')]",
+            "teamsManagedApiId": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', parameters('location'), 'teams')]",
             "outlookConnectionName": "[if(empty(parameters('outlookConnectionResourceId')), '', last(split(parameters('outlookConnectionResourceId'), '/')))]",
-            "connections": "[union(createObject('azuresentinel', createObject('connectionId', resourceId('Microsoft.Web/connections', format('{0}-activity-sentinel', parameters('namePrefix'))), 'connectionName', format('{0}-activity-sentinel', parameters('namePrefix')), 'connectionProperties', createObject('authentication', createObject('type', 'ManagedServiceIdentity', 'identity', variables('playbookIdentityId'))), 'id', variables('sentinelManagedApiId'))), if(empty(parameters('outlookConnectionResourceId')), createObject(), createObject('office365', createObject('connectionId', parameters('outlookConnectionResourceId'), 'connectionName', variables('outlookConnectionName'), 'id', variables('outlookManagedApiId')))))]",
-            "teamsAction": {
-              "Post_adaptive_card_to_Teams": {
-                "type": "Http",
-                "inputs": {
-                  "method": "POST",
-                  "uri": "@parameters('teamsWebhookUrl')",
-                  "headers": {
-                    "Content-Type": "application/json"
-                  },
-                  "body": {
-                    "type": "message",
-                    "attachments": [
-                      {
-                        "contentType": "application/vnd.microsoft.card.adaptive",
-                        "contentUrl": null,
-                        "content": {
-                          "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                          "type": "AdaptiveCard",
-                          "version": "1.4",
-                          "body": [
-                            {
-                              "type": "TextBlock",
-                              "text": "@triggerBody()?['object']?['properties']?['title']",
-                              "weight": "Bolder",
-                              "size": "Medium",
-                              "wrap": true
-                            },
-                            {
-                              "type": "FactSet",
-                              "facts": [
-                                {
-                                  "title": "Severity",
-                                  "value": "@triggerBody()?['object']?['properties']?['severity']"
-                                },
-                                {
-                                  "title": "Created",
-                                  "value": "@triggerBody()?['object']?['properties']?['createdTimeUtc']"
-                                },
-                                {
-                                  "title": "Incident",
-                                  "value": "@string(triggerBody()?['object']?['properties']?['incidentNumber'])"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "TextBlock",
-                              "text": "@triggerBody()?['object']?['properties']?['description']",
-                              "wrap": true
-                            }
-                          ],
-                          "actions": [
-                            {
-                              "type": "Action.OpenUrl",
-                              "title": "Open incident",
-                              "url": "@triggerBody()?['object']?['properties']?['incidentUrl']"
-                            }
-                          ]
-                        }
-                      }
-                    ]
-                  }
-                },
-                "runAfter": {}
-              }
-            },
+            "teamsConnectionName": "[if(empty(parameters('teamsConnectionResourceId')), '', last(split(parameters('teamsConnectionResourceId'), '/')))]",
+            "effectiveTeamsConnectionId": "[if(equals(parameters('teamsDeliveryMode'), 'admin-configured'), resourceId('Microsoft.Web/connections', format('{0}-activity-teams', parameters('namePrefix'))), parameters('teamsConnectionResourceId'))]",
+            "effectiveTeamsConnectionName": "[if(equals(parameters('teamsDeliveryMode'), 'admin-configured'), format('{0}-activity-teams', parameters('namePrefix')), variables('teamsConnectionName'))]",
+            "connections": "[union(createObject('azuresentinel', createObject('connectionId', resourceId('Microsoft.Web/connections', format('{0}-activity-sentinel', parameters('namePrefix'))), 'connectionName', format('{0}-activity-sentinel', parameters('namePrefix')), 'connectionProperties', createObject('authentication', createObject('type', 'ManagedServiceIdentity', 'identity', variables('playbookIdentityId'))), 'id', variables('sentinelManagedApiId'))), if(or(equals(parameters('teamsDeliveryMode'), 'api-connection'), equals(parameters('teamsDeliveryMode'), 'admin-configured')), createObject('teams', createObject('connectionId', variables('effectiveTeamsConnectionId'), 'connectionName', variables('effectiveTeamsConnectionName'), 'id', variables('teamsManagedApiId'))), createObject()), if(empty(parameters('outlookConnectionResourceId')), createObject(), createObject('office365', createObject('connectionId', parameters('outlookConnectionResourceId'), 'connectionName', variables('outlookConnectionName'), 'id', variables('outlookManagedApiId')))))]",
+            "teamsWebhookAction": "[if(equals(parameters('teamsDeliveryMode'), 'workflow-webhook'), createObject('Post_adaptive_card_to_Teams', createObject('type', 'Http', 'inputs', createObject('method', 'POST', 'uri', '@parameters(''teamsWebhookUrl'')', 'headers', createObject('Content-Type', 'application/json'), 'body', createObject('type', 'message', 'attachments', createArray(createObject('contentType', 'application/vnd.microsoft.card.adaptive', 'contentUrl', null(), 'content', createObject('$schema', 'http://adaptivecards.io/schemas/adaptive-card.json', 'type', 'AdaptiveCard', 'version', '1.4', 'body', createArray(createObject('type', 'TextBlock', 'text', '@triggerBody()?[''object'']?[''properties'']?[''title'']', 'weight', 'Bolder', 'size', 'Medium', 'wrap', true()), createObject('type', 'FactSet', 'facts', createArray(createObject('title', 'Severity', 'value', '@triggerBody()?[''object'']?[''properties'']?[''severity'']'), createObject('title', 'Created', 'value', '@triggerBody()?[''object'']?[''properties'']?[''createdTimeUtc'']'), createObject('title', 'Incident', 'value', '@string(triggerBody()?[''object'']?[''properties'']?[''incidentNumber''])'))), createObject('type', 'TextBlock', 'text', '@triggerBody()?[''object'']?[''properties'']?[''description'']', 'wrap', true())), 'actions', createArray(createObject('type', 'Action.OpenUrl', 'title', 'Open incident', 'url', '@triggerBody()?[''object'']?[''properties'']?[''incidentUrl'']'))))))), 'runAfter', createObject())), createObject())]",
+            "teamsConnectionAction": "[if(or(equals(parameters('teamsDeliveryMode'), 'api-connection'), equals(parameters('teamsDeliveryMode'), 'admin-configured')), createObject('Post_message_to_Teams_channel', createObject('type', 'ApiConnection', 'inputs', createObject('host', createObject('connection', createObject('name', '@parameters(''$connections'')[''teams''][''connectionId'']')), 'method', 'post', 'path', '/beta/teams/conversation/message/poster/@{encodeURIComponent(''User'')}/location/@{encodeURIComponent(''Channel'')}', 'body', createObject('recipient', createObject('groupId', parameters('teamsTeamId'), 'channelId', parameters('teamsChannelId')), 'messageBody', '@concat(''<p><strong>'', triggerBody()?[''object'']?[''properties'']?[''title''], ''</strong></p><p>Severity: '', triggerBody()?[''object'']?[''properties'']?[''severity''], ''</p><p>'', triggerBody()?[''object'']?[''properties'']?[''description''], ''</p><p><a href=\"'', triggerBody()?[''object'']?[''properties'']?[''incidentUrl''], ''\">Open Microsoft Sentinel incident</a></p>'')')), 'runAfter', createObject())), createObject())]",
             "emailAction": "[if(empty(parameters('outlookConnectionResourceId')), createObject(), createObject('Send_incident_email', createObject('type', 'ApiConnection', 'inputs', createObject('host', createObject('connection', createObject('name', '@parameters(''$connections'')[''office365''][''connectionId'']')), 'method', 'post', 'path', '/v2/Mail', 'body', createObject('To', parameters('notificationEmail'), 'Subject', '@concat(''[Emergency access] '', triggerBody()?[''object'']?[''properties'']?[''title''])', 'Body', '@concat(''<p><strong>'', triggerBody()?[''object'']?[''properties'']?[''title''], ''</strong></p><p>Severity: '', triggerBody()?[''object'']?[''properties'']?[''severity''], ''</p><p>'', triggerBody()?[''object'']?[''properties'']?[''description''], ''</p><p><a href=\"'', triggerBody()?[''object'']?[''properties'']?[''incidentUrl''], ''\">Open Microsoft Sentinel incident</a></p>'')', 'Importance', 'High')), 'runAfter', createObject())))]"
           },
           "resources": [
+            {
+              "condition": "[equals(parameters('teamsDeliveryMode'), 'admin-configured')]",
+              "type": "Microsoft.Web/connections",
+              "apiVersion": "2016-06-01",
+              "name": "[format('{0}-activity-teams', parameters('namePrefix'))]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "displayName": "[format('{0} Teams activity notifications', parameters('namePrefix'))]",
+                "api": {
+                  "id": "[variables('teamsManagedApiId')]"
+                }
+              }
+            },
             {
               "type": "Microsoft.Web/connections",
               "apiVersion": "2016-06-01",
@@ -3355,7 +3371,7 @@
                 }
               },
               "properties": {
-                "state": "Enabled",
+                "state": "[if(equals(parameters('teamsDeliveryMode'), 'admin-configured'), 'Disabled', 'Enabled')]",
                 "parameters": {
                   "teamsWebhookUrl": {
                     "value": "[parameters('teamsWebhookUrl')]"
@@ -3392,11 +3408,12 @@
                       }
                     }
                   },
-                  "actions": "[union(variables('teamsAction'), variables('emailAction'))]",
+                  "actions": "[union(variables('teamsWebhookAction'), variables('teamsConnectionAction'), variables('emailAction'))]",
                   "outputs": {}
                 }
               },
               "dependsOn": [
+                "[resourceId('Microsoft.Web/connections', format('{0}-activity-teams', parameters('namePrefix')))]",
                 "[resourceId('Microsoft.Resources/deployments', 'activity-playbook-identity')]",
                 "[resourceId('Microsoft.Web/connections', format('{0}-activity-sentinel', parameters('namePrefix')))]"
               ]
@@ -3886,6 +3903,10 @@
             "sentinelReaderRoleAssignmentId": {
               "type": "string",
               "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.sentinelReaderRoleAssignmentId.value]"
+            },
+            "teamsConnectionResourceId": {
+              "type": "string",
+              "value": "[if(equals(parameters('teamsDeliveryMode'), 'admin-configured'), resourceId('Microsoft.Web/connections', format('{0}-activity-teams', parameters('namePrefix'))), parameters('teamsConnectionResourceId'))]"
             }
           }
         }
@@ -3964,6 +3985,10 @@
     "AZURE_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID": {
       "type": "string",
       "value": "[if(equals(parameters('enableSentinelActivityAlerts'), 'true'), reference(resourceId('Microsoft.Resources/deployments', 'sentinel-activity-alerting'), '2025-04-01').outputs.sentinelReaderRoleAssignmentId.value, '')]"
+    },
+    "AZURE_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID": {
+      "type": "string",
+      "value": "[if(equals(parameters('enableSentinelActivityAlerts'), 'true'), reference(resourceId('Microsoft.Resources/deployments', 'sentinel-activity-alerting'), '2025-04-01').outputs.teamsConnectionResourceId.value, '')]"
     },
     "AZURE_WORKLOAD_RESOURCE_NAME": {
       "type": "string",

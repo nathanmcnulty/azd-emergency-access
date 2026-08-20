@@ -88,6 +88,19 @@ Describe 'Lifecycle security wiring' {
         $logicApp | Should -Match "runStatus: 'Failed'"
     }
 
+    It 'enables the scheduled Logic App only after Graph roles are granted' {
+        $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
+        $postProvision = Get-Content "$PSScriptRoot\..\scripts\Post-Provision.ps1" -Raw
+        $logicApp | Should -Match "state: 'Disabled'"
+        $postProvision | Should -Match 'Bootstrap-Tenant.ps1" -Phase Workload[\s\S]+properties.state=Enabled'
+    }
+
+    It 'skips non-user Conditional Access policies' {
+        $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
+        $logicApp | Should -Match 'includeUsers'
+        $logicApp | Should -Match "'None'"
+    }
+
     It 'fails closed when Sentinel Function authentication is absent' {
         $sentinelBicep | Should -Match '@minLength\(1\)\s*param functionAuthClientId string'
         $sentinelBicep | Should -Match '@minLength\(1\)\s*param functionAuthAudience string'
