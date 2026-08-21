@@ -110,19 +110,24 @@ This independent capability works with any remediation mode. It creates three Se
 
 Each matching event creates its own high-severity Sentinel alert and incident. An incident-created automation rule invokes a managed-identity playbook, which posts through the selected Teams delivery method. This keeps SOC incident history and Teams delivery separate from the Azure Monitor action-group path.
 
-In Teams, create a Workflow using **When a Teams webhook request is received** and a channel-posting action, assign at least two durable owners, select the intended channel, and copy its callback URL. The playbook calls the webhook without an Entra token, so configure the workflow to accept calls from anyone and treat the callback URL as a secret. Do not use a legacy Office 365 incoming webhook; Microsoft is retiring that connector model.
+The default interactive setup uses a Teams Logic Apps API connection and guides the administrator through its one required browser authorization:
+
+1. In Teams, right-click the destination channel and select **Copy link**.
+2. Run `azd up` and paste that link when prompted. The hook derives the tenant, team, and channel IDs.
+3. The deployment creates the Teams connection and opens Microsoft's authorization page in the normal browser.
+4. Sign in once as the durable notification account that should appear as the message sender, then return to the terminal and press Enter.
+5. The hook verifies the connection, enables the playbook, and the optional delivery smoke test verifies a real channel post.
 
 ```powershell
 azd env set AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS true
 azd env set AZD_SENTINEL_WORKSPACE_NAME law-security
 azd env set AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP rg-security
-azd env set AZD_SENTINEL_TEAMS_WEBHOOK_URL '<Teams Workflow callback URL>'
 azd hooks run preprovision
 azd provision --preview
 azd up
 ```
 
-The Teams Workflow webhook is the default because it avoids a second user-authorized Teams API connection and matches the low-volume, one-way channel-delivery requirement. Its URL grants posting capability, however, and the Power Automate workflow is owner-bound. Rotate the URL if exposed and periodically verify its owners and enabled state.
+This is user authorization of the Teams connector, not a tenant-wide Microsoft Graph permission grant. Use a dedicated, durable notification account with access to the destination channel rather than an emergency account or an administrator's everyday identity. The connector posts as that account, and its authorization must be renewed if that account's tokens are revoked.
 
 To send one labeled test notification after deployment and fail `azd up` when the actual Teams or optional Outlook action fails, enable the delivery smoke test. It is off by default so routine deployments do not post messages:
 
@@ -133,7 +138,7 @@ azd up
 
 An API connection can continue to report `Connected` after its delegated refresh token has been revoked or expired. The live smoke test is the authoritative delivery check; resource status alone is not.
 
-Alternatively, select an existing authorized Teams Logic Apps connection and provide the target IDs. The connection must use the Teams managed API in `AZURE_LOCATION` and the same Azure subscription:
+To reuse an existing authorized Teams Logic Apps connection instead of the guided flow, provide the connection and target IDs explicitly. The connection must use the Teams managed API in `AZURE_LOCATION` and the same Azure subscription:
 
 ```powershell
 azd env set AZD_SENTINEL_TEAMS_DELIVERY_MODE api-connection
@@ -142,16 +147,17 @@ azd env set AZD_SENTINEL_TEAMS_TEAM_ID '<team ID>'
 azd env set AZD_SENTINEL_TEAMS_CHANNEL_ID '<channel ID>'
 ```
 
-If the deployment operator must not grant delegated consent, scaffold the connection for a Teams administrator instead. This deploys the Teams connection and the playbook in a disabled state:
+For unattended deployment, provide the copied channel link and keep the default `admin-configured` mode. The deployment leaves the playbook disabled and prints the consent URL for a Teams administrator:
 
 ```powershell
 azd env set AZD_SENTINEL_TEAMS_DELIVERY_MODE admin-configured
-azd env set AZD_SENTINEL_TEAMS_TEAM_ID '<team ID>'
-azd env set AZD_SENTINEL_TEAMS_CHANNEL_ID '<channel ID>'
+azd env set AZD_SENTINEL_TEAMS_CHANNEL_LINK '<copied Teams channel link>'
 azd up
 ```
 
-An administrator then opens the emitted `AZURE_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID` in Azure, authorizes the Teams connection, changes the mode to `api-connection`, sets that resource ID in `AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID`, and runs `azd up` again. The second deployment validates the authorization and enables the playbook. This explicit transition keeps incidents from producing failed notification runs while consent is incomplete.
+An administrator opens the printed consent URL and authorizes the connection, then reruns `azd hooks run postprovision`. No delivery-mode change or second infrastructure deployment is required.
+
+If policy prohibits a user-authorized Azure API connection, `workflow-webhook` remains available. Create a Teams Workflow using **When a Teams webhook request is received**, assign durable owners, add the channel-posting action, and store its callback URL as `AZD_SENTINEL_TEAMS_WEBHOOK_URL`. The playbook calls that URL without acquiring a user token, but the URL is a bearer secret and the Teams Workflow still has an owner lifecycle.
 
 The Sentinel playbook can also send high-importance email through an existing, authorized Office 365 Outlook API connection. Supply both values or neither:
 
@@ -264,7 +270,8 @@ AuditLogs
 | `AZD_SIGNIN_ALERT_EMAIL` | none | When alerts enabled | One plain email address for the deployed action group |
 | `AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS` | `false` | Always | Deploy optional Sentinel sign-in, admin-activity, and account-change detections plus notifications |
 | `AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY` | `false` | With Sentinel activity alerts | Post one labeled test notification after deployment and fail on delivery errors |
-| `AZD_SENTINEL_TEAMS_DELIVERY_MODE` | `workflow-webhook` | With Sentinel activity alerts | `workflow-webhook`, `api-connection`, or `admin-configured` |
+| `AZD_SENTINEL_TEAMS_DELIVERY_MODE` | `admin-configured` | With Sentinel activity alerts | Guided authorization, or `workflow-webhook` / existing `api-connection` alternatives |
+| `AZD_SENTINEL_TEAMS_CHANNEL_LINK` | none | Guided Teams setup | Channel link copied from Teams; team, channel, and tenant IDs are derived |
 | `AZD_SENTINEL_TEAMS_WEBHOOK_URL` | none | Webhook mode | Secret Teams Workflow callback URL for the target channel |
 | `AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID` | none | API-connection mode | Existing authorized Teams Logic Apps connection |
 | `AZD_SENTINEL_TEAMS_TEAM_ID` | none | API-connection mode | Target Microsoft Teams team ID |

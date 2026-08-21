@@ -176,3 +176,4 @@ if ($ownedClientId) {
 }
 
 Clear-AzdEnvironmentValue 'AZD_PROVISIONED_MODE'
+Clear-AzdEnvironmentValue 'AZD_SENTINEL_TEAMS_AUTHORIZED'

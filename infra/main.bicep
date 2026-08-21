@@ -52,7 +52,7 @@ param sentinelTeamsWebhookUrl string = ''
   'api-connection'
   'admin-configured'
 ])
-param sentinelTeamsDeliveryMode string = 'workflow-webhook'
+param sentinelTeamsDeliveryMode string = 'admin-configured'
 param sentinelTeamsConnectionResourceId string = ''
 param sentinelTeamsTeamId string = ''
 param sentinelTeamsChannelId string = ''

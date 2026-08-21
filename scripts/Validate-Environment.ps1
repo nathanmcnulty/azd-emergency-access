@@ -87,7 +87,7 @@ Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
 Set-AzdDefault AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS 'false'
 Set-AzdDefault AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY 'false'
-Set-AzdDefault AZD_SENTINEL_TEAMS_DELIVERY_MODE 'workflow-webhook'
+Set-AzdDefault AZD_SENTINEL_TEAMS_DELIVERY_MODE 'admin-configured'
 if (-not $env:AZD_AUTOMATION_START_TIME) {
     Set-AzdDefault AZD_AUTOMATION_START_TIME (
         [DateTimeOffset]::UtcNow.AddMinutes(15).ToString('yyyy-MM-ddTHH:mm:sszzz')
@@ -202,7 +202,47 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
             throw 'Teams webhook and connection resource ID must be empty when admin-configured delivery is selected.'
         }
         if (-not $env:AZD_SENTINEL_TEAMS_TEAM_ID -or -not $env:AZD_SENTINEL_TEAMS_CHANNEL_ID) {
-            throw 'Admin-configured delivery requires the team ID and channel ID.'
+            if (-not $env:AZD_SENTINEL_TEAMS_CHANNEL_LINK -and (Test-Interactive)) {
+                Write-Host 'In Microsoft Teams, right-click the target channel, select Copy link, then paste it here.'
+                $channelLink = Read-Host 'Teams channel link'
+                if ($channelLink) {
+                    & azd env set AZD_SENTINEL_TEAMS_CHANNEL_LINK $channelLink | Out-Null
+                    if ($LASTEXITCODE -ne 0) {
+                        throw 'Unable to persist AZD_SENTINEL_TEAMS_CHANNEL_LINK.'
+                    }
+                    $env:AZD_SENTINEL_TEAMS_CHANNEL_LINK = $channelLink
+                }
+            }
+            if (-not $env:AZD_SENTINEL_TEAMS_CHANNEL_LINK) {
+                throw 'Admin-configured delivery requires a copied Teams channel link or explicit team and channel IDs.'
+            }
+
+            try {
+                $channelUri = [uri]$env:AZD_SENTINEL_TEAMS_CHANNEL_LINK
+                $segments = $channelUri.AbsolutePath.Trim('/').Split('/') |
+                    ForEach-Object { [uri]::UnescapeDataString($_) }
+                if ($segments.Length -lt 4 -or $segments[0] -ne 'l' -or $segments[1] -ne 'channel') {
+                    throw 'unsupported path'
+                }
+                $query = [System.Web.HttpUtility]::ParseQueryString($channelUri.Query)
+                $channelId = $segments[2]
+                $teamId = $query['groupId']
+                $channelTenantId = $query['tenantId']
+            }
+            catch {
+                throw 'AZD_SENTINEL_TEAMS_CHANNEL_LINK must be a channel link copied from Microsoft Teams.'
+            }
+            if (-not $teamId -or -not $channelId -or -not $channelTenantId) {
+                throw 'Unable to resolve the team, channel, and tenant IDs from AZD_SENTINEL_TEAMS_CHANNEL_LINK.'
+            }
+            if ($channelTenantId -ne $env:AZURE_TENANT_ID) {
+                throw "The Teams channel tenant '$channelTenantId' does not match AZURE_TENANT_ID '$($env:AZURE_TENANT_ID)'."
+            }
+            Set-AzdDefault AZD_SENTINEL_TEAMS_TEAM_ID $teamId
+            Set-AzdDefault AZD_SENTINEL_TEAMS_CHANNEL_ID $channelId
+        }
+        if (-not $env:AZD_SENTINEL_TEAMS_TEAM_ID -or -not $env:AZD_SENTINEL_TEAMS_CHANNEL_ID) {
+            throw 'Admin-configured delivery could not resolve the team ID and channel ID.'
         }
     }
 

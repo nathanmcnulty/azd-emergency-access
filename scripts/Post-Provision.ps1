@@ -2,6 +2,136 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$script:TeamsAuthorizationPerformed = $false
+
+function Test-Interactive {
+    return -not ($env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected)
+}
+
+function Get-ArmAccessToken {
+    $token = & az account get-access-token `
+        --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --resource https://management.azure.com/ `
+        --query accessToken `
+        --output tsv `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $token) {
+        throw 'Unable to acquire a cached Azure Resource Manager token for Teams connection setup.'
+    }
+    return $token
+}
+
+function Invoke-ArmJson {
+    param(
+        [Parameter(Mandatory)][ValidateSet('GET', 'POST')][string] $Method,
+        [Parameter(Mandatory)][string] $Uri,
+        [object] $Body
+    )
+
+    $parameters = @{
+        Method = $Method
+        Uri = $Uri
+        Headers = @{ Authorization = "Bearer $(Get-ArmAccessToken)" }
+    }
+    if ($null -ne $Body) {
+        $parameters.Body = $Body | ConvertTo-Json -Depth 10 -Compress
+        $parameters.ContentType = 'application/json'
+    }
+    Invoke-RestMethod @parameters
+}
+
+function Get-TeamsConnectionStatus {
+    param([Parameter(Mandatory)][string] $ConnectionResourceId)
+
+    $connection = Invoke-ArmJson `
+        -Method GET `
+        -Uri "https://management.azure.com$ConnectionResourceId`?api-version=2016-06-01"
+    return @($connection.properties.statuses)[0].status
+}
+
+function Get-TeamsConsentLink {
+    param([Parameter(Mandatory)][string] $ConnectionResourceId)
+
+    $currentUser = Invoke-MgGraphRequest `
+        -Method GET `
+        -Uri 'https://graph.microsoft.com/v1.0/me?$select=id,userPrincipalName'
+    if (-not $currentUser.id) {
+        throw 'Unable to resolve the current Microsoft Graph user for Teams connection authorization.'
+    }
+    $body = @{
+        parameters = @(
+            @{
+                parameterName = 'token'
+                redirectUrl = 'https://portal.azure.com'
+                objectId = $currentUser.id
+                tenantId = $env:AZURE_TENANT_ID
+            }
+        )
+    }
+    $response = Invoke-ArmJson `
+        -Method POST `
+        -Uri "https://management.azure.com$ConnectionResourceId/listConsentLinks?api-version=2016-06-01" `
+        -Body $body
+    return @($response.value) | Select-Object -First 1
+}
+
+function Open-ConsentUrl {
+    param([Parameter(Mandatory)][string] $Url)
+
+    try {
+        if ($IsWindows) {
+            Start-Process $Url | Out-Null
+        }
+        elseif ($IsMacOS) {
+            & open $Url
+        }
+        else {
+            & xdg-open $Url
+        }
+    }
+    catch {
+        Write-Warning 'The consent page could not be opened automatically; open the printed URL manually.'
+    }
+}
+
+function Complete-TeamsConnectionAuthorization {
+    param([Parameter(Mandatory)][string] $ConnectionResourceId)
+
+    $readyStatuses = @('Authenticated', 'Connected', 'Ready')
+    $status = Get-TeamsConnectionStatus -ConnectionResourceId $ConnectionResourceId
+    if ($status -in $readyStatuses) {
+        return $true
+    }
+
+    $consent = Get-TeamsConsentLink -ConnectionResourceId $ConnectionResourceId
+    if (-not $consent.link) {
+        throw "The Teams connection is '$status', but Azure did not return an authorization link."
+    }
+
+    Write-Host ''
+    Write-Warning 'One browser authorization is required for Teams channel notifications.'
+    Write-Warning 'Sign in as the durable Teams notification account that should appear as the message sender.'
+    Write-Host $consent.link
+    Write-Host ''
+    if (-not (Test-Interactive)) {
+        Write-Warning "The Teams playbook remains disabled. Open the URL above, then rerun 'azd hooks run postprovision'."
+        return $false
+    }
+
+    Open-ConsentUrl -Url $consent.link
+    while ($true) {
+        $response = Read-Host 'Complete the browser authorization, then press Enter to continue (or type skip)'
+        if ($response.Trim() -eq 'skip') {
+            return $false
+        }
+        $status = Get-TeamsConnectionStatus -ConnectionResourceId $ConnectionResourceId
+        if ($status -in $readyStatuses) {
+            $script:TeamsAuthorizationPerformed = $true
+            return $true
+        }
+        Write-Warning "The Teams connection is still '$status'. Complete the browser authorization, then press Enter again."
+    }
+}
 
 if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
     foreach ($ownedOutput in @{
@@ -87,6 +217,39 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
         Write-Warning "The Microsoft Sentinel Automation Contributor assignment could not be completed. In Microsoft Sentinel, open Settings > Playbook permissions and grant access to playbook resource group '$($env:AZURE_RESOURCE_GROUP)'."
     }
 
+}
+
+if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true' -and
+    $env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -eq 'admin-configured') {
+    $teamsConnectionId = $env:AZURE_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID
+    if (-not $teamsConnectionId) {
+        throw 'Infrastructure did not output the Teams API connection resource ID.'
+    }
+    if (Complete-TeamsConnectionAuthorization -ConnectionResourceId $teamsConnectionId) {
+        & az resource update `
+            --ids $env:AZURE_SENTINEL_ACTIVITY_PLAYBOOK_RESOURCE_ID `
+            --api-version 2019-05-01 `
+            --set properties.state=Enabled `
+            --only-show-errors | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The Teams connection was authorized, but the Sentinel notification playbook could not be enabled.'
+        }
+        Write-Host 'Teams connection authorized; the Sentinel notification playbook is enabled.'
+        if ($script:TeamsAuthorizationPerformed -or $env:AZD_SENTINEL_TEAMS_AUTHORIZED -ne 'true') {
+            $previousSmokeTest = $env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY
+            try {
+                $env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY = 'true'
+                & "$PSScriptRoot\Test-Deployment.ps1"
+            }
+            finally {
+                $env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY = $previousSmokeTest
+            }
+            & azd env set AZD_SENTINEL_TEAMS_AUTHORIZED true | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Teams delivery succeeded, but its validation record could not be persisted.'
+            }
+        }
+    }
 }
 
 & azd env set AZD_PROVISIONED_MODE $env:AZD_DEPLOYMENT_MODE | Out-Null
