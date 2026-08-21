@@ -462,9 +462,6 @@ function Invoke-TapOnboarding {
     param([object[]] $Users, [string] $GroupId)
 
     $enableTap = $env:AZD_ENABLE_TAP_POLICY -eq 'true'
-    if (-not $enableTap -and (Test-Interactive)) {
-        $enableTap = (Read-Host 'Enable Temporary Access Pass and create reusable 2-hour TAPs? [y/N]') -match '^(y|yes)$'
-    }
     if (-not $enableTap) {
         return
     }

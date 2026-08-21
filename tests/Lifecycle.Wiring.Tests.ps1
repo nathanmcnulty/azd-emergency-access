@@ -89,6 +89,7 @@ Describe 'Lifecycle security wiring' {
         $bootstrap | Should -Match "Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass' -Beta"
         $bootstrap | Should -Match '\$includeTargets = @\(\$currentTap.includeTargets\)'
         $bootstrap | Should -Not -Match 'defaultLifetimeInMinutes = 120'
+        $bootstrap | Should -Not -Match 'Enable Temporary Access Pass and create reusable 2-hour TAPs'
     }
 
     It 'fails the Logic App after processing when any policy patch fails' {

@@ -310,7 +310,7 @@ Sentinel also requires its **Azure Security Insights** automation service identi
 
 When TAP policy enablement is requested, bootstrap merges the emergency group into the existing `includeTargets` collection and leaves exclusions and unrelated policy settings unchanged.
 
-`AZD_ENABLE_TAP_POLICY` defaults to `false`. An interactive deployment prompts before changing the tenant authentication-method policy. A noninteractive deployment silently skips TAP unless the value is explicitly `true`.
+`AZD_ENABLE_TAP_POLICY` defaults to `false`, and deployments do not prompt for TAP onboarding. Set it explicitly to `true` before deployment when the template should change the tenant authentication-method policy and create passes.
 
 When enabled, each reusable TAP has a lifetime of exactly 120 minutes and is displayed once in the interactive console. It is not recoverable from this project. Immediately:
 
