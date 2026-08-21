@@ -13,13 +13,47 @@ function Test-Interactive {
     return -not ($env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected)
 }
 
-function Get-GraphToken {
-    $token = & az account get-access-token --subscription $env:AZURE_SUBSCRIPTION_ID `
-        --resource-type ms-graph --query accessToken -o tsv
-    if ($LASTEXITCODE -ne 0 -or -not $token) {
-        throw 'Unable to acquire a Microsoft Graph token. Run az login with the required tenant permissions.'
+function Connect-ProjectGraph {
+    $scopes = [Collections.Generic.List[string]]::new()
+    if ($Phase -in 'All', 'Identities') {
+        @(
+            'User.ReadWrite.All',
+            'Group.ReadWrite.All',
+            'AdministrativeUnit.ReadWrite.All',
+            'RoleManagement.ReadWrite.Directory'
+        ) | ForEach-Object { $scopes.Add($_) }
+        if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+            $scopes.Add('Application.ReadWrite.All')
+        }
+        elseif ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
+            $scopes.Add('Application.Read.All')
+        }
     }
-    return $token
+    if ($Phase -in 'All', 'Workload') {
+        @(
+            'User.Read.All',
+            'Application.Read.All',
+            'AppRoleAssignment.ReadWrite.All'
+        ) | ForEach-Object { $scopes.Add($_) }
+        if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+            $scopes.Add('Policy.ReadWrite.AuthenticationMethod')
+            $scopes.Add('UserAuthenticationMethod.ReadWrite.All')
+        }
+    }
+
+    try {
+        Connect-MgGraph `
+            -TenantId $env:AZURE_TENANT_ID `
+            -Scopes @($scopes | Select-Object -Unique) `
+            -NoWelcome | Out-Null
+    }
+    catch {
+        throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"
+    }
+    $context = Get-MgContext
+    if (-not $context -or $context.TenantId -ne $env:AZURE_TENANT_ID) {
+        throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
+    }
 }
 
 function Invoke-Graph {
@@ -37,14 +71,13 @@ function Invoke-Graph {
     $parameters = @{
         Method = $Method
         Uri = "$graphRoot/$version/$($Path.TrimStart('/'))"
-        Headers = @{ Authorization = "Bearer $script:graphToken" }
         ContentType = 'application/json'
     }
     if ($null -ne $Body) {
         $parameters.Body = $Body | ConvertTo-Json -Depth 20 -Compress
     }
     try {
-        Invoke-RestMethod @parameters
+        Invoke-MgGraphRequest @parameters
     }
     catch {
         $status = [int]$_.Exception.Response.StatusCode
@@ -470,7 +503,7 @@ function Invoke-TapOnboarding {
     }
 }
 
-$script:graphToken = Get-GraphToken
+Connect-ProjectGraph
 if ($Phase -in 'All', 'Identities') {
     $users = @(
         Resolve-EmergencyUser 1
@@ -513,5 +546,4 @@ if ($Phase -in 'All', 'Workload') {
     )
     Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
 }
-$script:graphToken = $null
 Write-Host "Tenant bootstrap phase '$Phase' completed."

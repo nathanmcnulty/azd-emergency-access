@@ -276,7 +276,7 @@ The deployment records non-secret resolved object IDs and exact `AZD_OWNED_*_ID`
 
 ## Identity bootstrap and permissions
 
-The preprovision hook resolves the tenant identities needed by ARM configuration, and the postprovision hook grants workload permissions and performs optional TAP onboarding. The idempotent hooks use the deployer's Microsoft Graph token to:
+The preprovision hook resolves the tenant identities needed by ARM configuration, and the postprovision hook grants workload permissions and performs optional TAP onboarding. The idempotent hooks use standard `Connect-MgGraph` delegated authentication, which reuses the current-user context or opens the normal WAM/browser sign-in when needed. Device-code authentication is not used. The hooks:
 
 1. Resolve or create two cloud-only users.
 2. Resolve or create a security group and add both users.
@@ -332,7 +332,7 @@ azd config show
 
 ## CI and noninteractive use
 
-Set `AZD_NON_INTERACTIVE=true`, provide the mode and all mode-specific values, and authenticate Azure CLI/azd using workload identity federation. Tenant bootstrap requires a Microsoft Graph token with the documented application/delegated permissions; do not use a client secret. TAP remains off unless explicitly enabled. If enabled noninteractively, the policy is configured but TAP methods are not generated because their one-time values cannot be safely delivered through CI; create them interactively afterward.
+Set `AZD_NON_INTERACTIVE=true`, provide the mode and all mode-specific values, and authenticate Azure CLI/azd using workload identity federation. Tenant bootstrap separately uses standard `Connect-MgGraph`; establish a compatible delegated current-user context before the hooks run. Device-code flow and client secrets are not used. TAP remains off unless explicitly enabled. If enabled noninteractively, the policy is configured but TAP methods are not generated because their one-time values cannot be safely delivered through CI; create them interactively afterward.
 
 ## azd catalog publishing
 

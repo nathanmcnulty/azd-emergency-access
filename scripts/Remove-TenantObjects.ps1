@@ -12,19 +12,30 @@ if (-not $DeleteObjectsCreatedByThisEnvironment) {
     throw 'Use -DeleteObjectsCreatedByThisEnvironment to acknowledge tenant-object deletion.'
 }
 
-$token = & az account get-access-token --subscription $env:AZURE_SUBSCRIPTION_ID `
-    --resource-type ms-graph --query accessToken -o tsv
-if ($LASTEXITCODE -ne 0 -or -not $token) {
-    throw 'Unable to acquire a Microsoft Graph token.'
+try {
+    Connect-MgGraph `
+        -TenantId $env:AZURE_TENANT_ID `
+        -Scopes @(
+            'User.ReadWrite.All',
+            'Group.ReadWrite.All',
+            'AdministrativeUnit.ReadWrite.All',
+            'Policy.ReadWrite.ConditionalAccess'
+        ) `
+        -NoWelcome | Out-Null
 }
-$headers = @{ Authorization = "Bearer $token" }
-
+catch {
+    throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"
+}
+$context = Get-MgContext
+if (-not $context -or $context.TenantId -ne $env:AZURE_TENANT_ID) {
+    throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
+}
 function Remove-ConditionalAccessGroupReferences {
     param([Parameter(Mandatory)][string] $GroupId)
 
     $nextLink = 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies'
     while ($nextLink) {
-        $page = Invoke-RestMethod -Method GET -Uri $nextLink -Headers $headers
+        $page = Invoke-MgGraphRequest -Method GET -Uri $nextLink
         foreach ($policy in @($page.value)) {
             $excludeGroups = @($policy.conditions.users.excludeGroups) | Where-Object { $_ }
             if ($GroupId -notin $excludeGroups) {
@@ -39,10 +50,9 @@ function Remove-ConditionalAccessGroupReferences {
                     }
                 }
             } | ConvertTo-Json -Depth 6 -Compress
-            Invoke-RestMethod `
+            Invoke-MgGraphRequest `
                 -Method PATCH `
                 -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($policy.id)" `
-                -Headers $headers `
                 -ContentType 'application/json' `
                 -Body $body | Out-Null
         }
@@ -90,7 +100,7 @@ foreach ($object in $objects) {
             if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
                 Remove-ConditionalAccessGroupReferences -GroupId $object.OwnedId
             }
-            Invoke-RestMethod -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)" -Headers $headers
+            Invoke-MgGraphRequest -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)"
             & azd env set $object.Ownership '' | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Unable to clear $($object.Ownership)." }
             & azd env set $object.CurrentName '' | Out-Null
@@ -106,4 +116,3 @@ foreach ($object in $objects) {
     }
 }
 
-$token = $null

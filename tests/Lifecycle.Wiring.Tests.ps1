@@ -58,8 +58,11 @@ Describe 'Lifecycle security wiring' {
         $tenantGuards | Should -Match 'ExpectedTenantId -ne \$SubscriptionTenantId'
         $tenantGuards | Should -Match 'ExpectedTenantId -ne \$ActiveTenantId'
         $bootstrap | Should -Match 'Assert-AzdTenantContext'
-        $bootstrap | Should -Match '--subscription \$env:AZURE_SUBSCRIPTION_ID'
-        $bootstrap | Should -Not -Match '--tenant \$env:AZURE_TENANT_ID'
+        $bootstrap | Should -Match 'Connect-MgGraph'
+        $bootstrap | Should -Match '-TenantId \$env:AZURE_TENANT_ID'
+        $bootstrap | Should -Match 'Get-MgContext'
+        $bootstrap | Should -Not -Match 'az account get-access-token'
+        $bootstrap | Should -Not -Match 'UseDeviceAuthentication'
     }
 
     It 'refuses incremental deployment mode transitions' {
@@ -105,7 +108,10 @@ Describe 'Lifecycle security wiring' {
         $cleanup = Get-Content "$PSScriptRoot\..\scripts\Remove-TenantObjects.ps1" -Raw
         $cleanup | Should -Match 'function Remove-ConditionalAccessGroupReferences'
         $cleanup | Should -Match 'excludeGroups = \$remainingGroups'
-        $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-RestMethod -Method DELETE'
+        $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-MgGraphRequest -Method DELETE'
+        $cleanup | Should -Match 'Connect-MgGraph'
+        $cleanup | Should -Not -Match 'az account get-access-token'
+        $cleanup | Should -Not -Match 'UseDeviceAuthentication'
     }
 
     It 'fails closed when Sentinel Function authentication is absent' {
