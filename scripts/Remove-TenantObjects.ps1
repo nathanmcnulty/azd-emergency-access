@@ -13,15 +13,7 @@ if (-not $DeleteObjectsCreatedByThisEnvironment) {
 }
 
 try {
-    Connect-MgGraph `
-        -TenantId $env:AZURE_TENANT_ID `
-        -Scopes @(
-            'User.ReadWrite.All',
-            'Group.ReadWrite.All',
-            'AdministrativeUnit.ReadWrite.All',
-            'Policy.ReadWrite.ConditionalAccess'
-        ) `
-        -NoWelcome | Out-Null
+    Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -NoWelcome | Out-Null
 }
 catch {
     throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"
@@ -29,6 +21,16 @@ catch {
 $context = Get-MgContext
 if (-not $context -or $context.TenantId -ne $env:AZURE_TENANT_ID) {
     throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
+}
+$requiredScopes = @(
+    'User.ReadWrite.All',
+    'Group.ReadWrite.All',
+    'AdministrativeUnit.ReadWrite.All',
+    'Policy.ReadWrite.ConditionalAccess'
+)
+$missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
+if ($missingScopes.Count -gt 0) {
+    throw "The cached Microsoft Graph context is missing cleanup scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry."
 }
 function Remove-ConditionalAccessGroupReferences {
     param([Parameter(Mandatory)][string] $GroupId)

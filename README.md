@@ -276,7 +276,7 @@ The deployment records non-secret resolved object IDs and exact `AZD_OWNED_*_ID`
 
 ## Identity bootstrap and permissions
 
-The preprovision hook resolves the tenant identities needed by ARM configuration, and the postprovision hook grants workload permissions and performs optional TAP onboarding. The idempotent hooks use standard `Connect-MgGraph` delegated authentication, which reuses the current-user context or opens the normal WAM/browser sign-in when needed. Device-code authentication is not used. The hooks:
+The preprovision hook resolves the tenant identities needed by ARM configuration, and the postprovision hook grants workload permissions and performs optional TAP onboarding. On the first deployment, standard `Connect-MgGraph` requests the complete delegated scope set needed by the selected capabilities and records `AZD_GRAPH_AUTH_INITIALIZED=true`. Later hooks call normal `Connect-MgGraph` without `-Scopes`, allowing its current-user MSAL cache to refresh and persist across PowerShell processes. Scopes are requested again only when the cached context is missing permissions, such as after changing operators, clearing the cache, or enabling another capability. Device-code authentication is not used. The hooks:
 
 1. Resolve or create two cloud-only users.
 2. Resolve or create a security group and add both users.

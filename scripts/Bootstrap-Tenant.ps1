@@ -15,37 +15,32 @@ function Test-Interactive {
 
 function Connect-ProjectGraph {
     $scopes = [Collections.Generic.List[string]]::new()
-    if ($Phase -in 'All', 'Identities') {
-        @(
-            'User.ReadWrite.All',
-            'Group.ReadWrite.All',
-            'AdministrativeUnit.ReadWrite.All',
-            'RoleManagement.ReadWrite.Directory'
-        ) | ForEach-Object { $scopes.Add($_) }
-        if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
-            $scopes.Add('Application.ReadWrite.All')
-        }
-        elseif ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
-            $scopes.Add('Application.Read.All')
-        }
+    @(
+        'User.ReadWrite.All',
+        'Group.ReadWrite.All',
+        'AdministrativeUnit.ReadWrite.All',
+        'RoleManagement.ReadWrite.Directory',
+        'Application.Read.All',
+        'AppRoleAssignment.ReadWrite.All',
+        'Policy.ReadWrite.ConditionalAccess'
+    ) | ForEach-Object { $scopes.Add($_) }
+    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+        $scopes.Add('Application.ReadWrite.All')
     }
-    if ($Phase -in 'All', 'Workload') {
-        @(
-            'User.Read.All',
-            'Application.Read.All',
-            'AppRoleAssignment.ReadWrite.All'
-        ) | ForEach-Object { $scopes.Add($_) }
-        if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
-            $scopes.Add('Policy.ReadWrite.AuthenticationMethod')
-            $scopes.Add('UserAuthenticationMethod.ReadWrite.All')
-        }
+    if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+        $scopes.Add('Policy.ReadWrite.AuthenticationMethod')
+        $scopes.Add('UserAuthenticationMethod.ReadWrite.All')
     }
+    $requiredScopes = @($scopes | Select-Object -Unique)
+    $authenticationInitialized = $env:AZD_GRAPH_AUTH_INITIALIZED -eq 'true'
 
     try {
-        Connect-MgGraph `
-            -TenantId $env:AZURE_TENANT_ID `
-            -Scopes @($scopes | Select-Object -Unique) `
-            -NoWelcome | Out-Null
+        if ($authenticationInitialized) {
+            Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -NoWelcome | Out-Null
+        }
+        else {
+            Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -Scopes $requiredScopes -NoWelcome | Out-Null
+        }
     }
     catch {
         throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"
@@ -53,6 +48,19 @@ function Connect-ProjectGraph {
     $context = Get-MgContext
     if (-not $context -or $context.TenantId -ne $env:AZURE_TENANT_ID) {
         throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
+    }
+    $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
+    if ($missingScopes.Count -gt 0 -and $authenticationInitialized) {
+        Write-Warning 'The cached Microsoft Graph context is missing required scopes; requesting the complete scope set once.'
+        Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -Scopes $requiredScopes -NoWelcome | Out-Null
+        $context = Get-MgContext
+        $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
+    }
+    if ($missingScopes.Count -gt 0) {
+        throw "Microsoft Graph authentication is missing required delegated scopes: $($missingScopes -join ', ')."
+    }
+    if (-not $authenticationInitialized) {
+        Set-AzdValue AZD_GRAPH_AUTH_INITIALIZED 'true'
     }
 }
 

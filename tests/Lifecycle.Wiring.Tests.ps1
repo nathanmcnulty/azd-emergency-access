@@ -61,6 +61,9 @@ Describe 'Lifecycle security wiring' {
         $bootstrap | Should -Match 'Connect-MgGraph'
         $bootstrap | Should -Match '-TenantId \$env:AZURE_TENANT_ID'
         $bootstrap | Should -Match 'Get-MgContext'
+        $bootstrap | Should -Match 'AZD_GRAPH_AUTH_INITIALIZED'
+        $bootstrap | Should -Match 'Connect-MgGraph -TenantId \$env:AZURE_TENANT_ID -NoWelcome'
+        $bootstrap | Should -Match 'Policy\.ReadWrite\.ConditionalAccess'
         $bootstrap | Should -Not -Match 'az account get-access-token'
         $bootstrap | Should -Not -Match 'UseDeviceAuthentication'
     }
@@ -110,6 +113,8 @@ Describe 'Lifecycle security wiring' {
         $cleanup | Should -Match 'excludeGroups = \$remainingGroups'
         $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-MgGraphRequest -Method DELETE'
         $cleanup | Should -Match 'Connect-MgGraph'
+        $cleanup | Should -Match 'Connect-MgGraph -TenantId \$env:AZURE_TENANT_ID -NoWelcome'
+        $cleanup | Should -Not -Match 'Connect-MgGraph[\s\S]{0,150}-Scopes'
         $cleanup | Should -Not -Match 'az account get-access-token'
         $cleanup | Should -Not -Match 'UseDeviceAuthentication'
     }
