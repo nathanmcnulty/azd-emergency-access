@@ -115,4 +115,3 @@ foreach ($object in $objects) {
         Write-Warning "Skipped $($object.Ownership): its exact owned ID does not match the current configured object ID."
     }
 }
-
