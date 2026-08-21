@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "537304499465388115"
+      "templateHash": "12490156290231570481"
     }
   },
   "parameters": {
@@ -1844,7 +1844,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "14340141512278893935"
+              "templateHash": "15113142504506367193"
             }
           },
           "parameters": {
@@ -2025,6 +2025,31 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Resources/deployments', 'sentinel-function-app')]",
                 "[resourceId('Microsoft.Web/connections', format('{0}-sentinel-connection', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Logic/workflows', variables('playbookName'))]",
+              "name": "workflow-runtime",
+              "properties": {
+                "workspaceId": "[reference(resourceId('Microsoft.Resources/deployments', 'observability'), '2025-04-01').outputs.workspaceId.value]",
+                "logs": [
+                  {
+                    "category": "WorkflowRuntime",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Resources/deployments', 'observability')]",
+                "[resourceId('Microsoft.Logic/workflows', variables('playbookName'))]"
               ]
             },
             {
@@ -3202,6 +3227,9 @@
           "workspaceResourceGroup": {
             "value": "[parameters('sentinelWorkspaceResourceGroup')]"
           },
+          "diagnosticsWorkspaceResourceId": {
+            "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('sentinelWorkspaceSubscriptionId'), parameters('sentinelWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('sentinelWorkspaceName'))]"
+          },
           "emergencyUser1ObjectId": {
             "value": "[parameters('emergencyUser1ObjectId')]"
           },
@@ -3255,7 +3283,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "3777079478195938878"
+              "templateHash": "15671240657378624383"
             }
           },
           "parameters": {
@@ -3276,6 +3304,9 @@
               "type": "string"
             },
             "workspaceResourceGroup": {
+              "type": "string"
+            },
+            "diagnosticsWorkspaceResourceId": {
               "type": "string"
             },
             "emergencyUser1ObjectId": {
@@ -3437,6 +3468,30 @@
                 "[resourceId('Microsoft.Web/connections', format('{0}-activity-teams', parameters('namePrefix')))]",
                 "[resourceId('Microsoft.Resources/deployments', 'activity-playbook-identity')]",
                 "[resourceId('Microsoft.Web/connections', format('{0}-activity-sentinel', parameters('namePrefix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Logic/workflows', variables('playbookName'))]",
+              "name": "workflow-runtime",
+              "properties": {
+                "workspaceId": "[parameters('diagnosticsWorkspaceResourceId')]",
+                "logs": [
+                  {
+                    "category": "WorkflowRuntime",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Logic/workflows', variables('playbookName'))]"
               ]
             },
             {

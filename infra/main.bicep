@@ -75,6 +75,11 @@ resource signInLogWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01
   scope: resourceGroup(signInLogWorkspaceSubscriptionId, signInLogWorkspaceResourceGroup)
 }
 
+resource sentinelWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = if (enableSentinelActivityAlerts == 'true') {
+  name: sentinelWorkspaceName
+  scope: resourceGroup(sentinelWorkspaceSubscriptionId, sentinelWorkspaceResourceGroup)
+}
+
 module automation 'modes/automation-scheduled.bicep' = if (deploymentMode == 'automation-scheduled') {
   name: 'automation-scheduled'
   params: {
@@ -154,6 +159,7 @@ module sentinelActivityAlerting 'modules/sentinel-activity-alerting.bicep' = if 
     workspaceName: sentinelWorkspaceName
     workspaceSubscriptionId: sentinelWorkspaceSubscriptionId
     workspaceResourceGroup: sentinelWorkspaceResourceGroup
+    diagnosticsWorkspaceResourceId: sentinelWorkspace!.id
     emergencyUser1ObjectId: emergencyUser1ObjectId
     emergencyUser2ObjectId: emergencyUser2ObjectId
     sentinelServicePrincipalId: sentinelServicePrincipalId
