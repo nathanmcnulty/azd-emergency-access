@@ -124,6 +124,15 @@ azd up
 
 The Teams Workflow webhook is the default because it avoids a second user-authorized Teams API connection and matches the low-volume, one-way channel-delivery requirement. Its URL grants posting capability, however, and the Power Automate workflow is owner-bound. Rotate the URL if exposed and periodically verify its owners and enabled state.
 
+To send one labeled test notification after deployment and fail `azd up` when the actual Teams or optional Outlook action fails, enable the delivery smoke test. It is off by default so routine deployments do not post messages:
+
+```powershell
+azd env set AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY true
+azd up
+```
+
+An API connection can continue to report `Connected` after its delegated refresh token has been revoked or expired. The live smoke test is the authoritative delivery check; resource status alone is not.
+
 Alternatively, select an existing authorized Teams Logic Apps connection and provide the target IDs. The connection must use the Teams managed API in `AZURE_LOCATION` and the same Azure subscription:
 
 ```powershell
@@ -254,6 +263,7 @@ AuditLogs
 | `AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP` | Sentinel workspace resource group in Sentinel mode | When alerts enabled | Resource group containing the sign-in-log workspace |
 | `AZD_SIGNIN_ALERT_EMAIL` | none | When alerts enabled | One plain email address for the deployed action group |
 | `AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS` | `false` | Always | Deploy optional Sentinel sign-in, admin-activity, and account-change detections plus notifications |
+| `AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY` | `false` | With Sentinel activity alerts | Post one labeled test notification after deployment and fail on delivery errors |
 | `AZD_SENTINEL_TEAMS_DELIVERY_MODE` | `workflow-webhook` | With Sentinel activity alerts | `workflow-webhook`, `api-connection`, or `admin-configured` |
 | `AZD_SENTINEL_TEAMS_WEBHOOK_URL` | none | Webhook mode | Secret Teams Workflow callback URL for the target channel |
 | `AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID` | none | API-connection mode | Existing authorized Teams Logic Apps connection |

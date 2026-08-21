@@ -5,6 +5,7 @@ Describe 'Lifecycle security wiring' {
         $preDown = Get-Content "$PSScriptRoot\..\scripts\Pre-Down.ps1" -Raw
         $preProvision = Get-Content "$PSScriptRoot\..\scripts\Pre-Provision.ps1" -Raw
         $validate = Get-Content "$PSScriptRoot\..\scripts\Validate-Environment.ps1" -Raw
+        $testDeployment = Get-Content "$PSScriptRoot\..\scripts\Test-Deployment.ps1" -Raw
         $parameters = Get-Content "$PSScriptRoot\..\infra\main.parameters.json" -Raw
         $mainBicep = Get-Content "$PSScriptRoot\..\infra\main.bicep" -Raw
         $modeBicep = @(
@@ -102,6 +103,15 @@ Describe 'Lifecycle security wiring' {
         $postProvision = Get-Content "$PSScriptRoot\..\scripts\Post-Provision.ps1" -Raw
         $logicApp | Should -Match "state: 'Disabled'"
         $postProvision | Should -Match 'Bootstrap-Tenant.ps1" -Phase Workload[\s\S]+properties.state=Enabled'
+    }
+
+    It 'offers an opt-in live Sentinel notification delivery smoke test' {
+        $validate | Should -Match "Set-AzdDefault AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY 'false'"
+        $validate | Should -Match 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY requires AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS=true'
+        $testDeployment | Should -Match 'Test-SentinelNotificationDelivery'
+        $testDeployment | Should -Match 'listCallbackUrl\?api-version=2019-05-01'
+        $testDeployment | Should -Match '\[TEST\] Emergency access notification delivery validation'
+        $testDeployment | Should -Match "status -ne 'Succeeded'"
     }
 
     It 'skips non-user Conditional Access policies' {
