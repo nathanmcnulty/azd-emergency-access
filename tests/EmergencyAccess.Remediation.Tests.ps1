@@ -15,6 +15,15 @@ Describe 'Invoke-EmergencyAccessRemediation' {
             Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId nope `
                 -SkipManagedIdentityConnection
         } | Should -Throw '*valid Microsoft Entra object ID*'
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 0
+    }
+
+    It 'rejects an invalid targeted policy ID before calling Graph' {
+        {
+            Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
+                -CAPolicyId nope -SkipManagedIdentityConnection
+        } | Should -Throw '*valid Microsoft Entra object ID*'
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 0
     }
 
     It 'adds the group when exclusions are null' {
@@ -154,15 +163,21 @@ Describe 'Invoke-EmergencyAccessRemediation' {
             -ParameterFilter { $Method -eq 'GET' -and $Uri.ToString().EndsWith($policy1) }
     }
 
-    It 'returns structured failure data through the thrown exception' {
+    It 'continues after a policy failure and returns structured failure data through the thrown exception' {
         Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
             $Method -eq 'GET'
         } -MockWith {
-            @{ value = @(@{ id = $policy1; conditions = @{ users = @{ excludeGroups = @() } } }) }
+            @{ value = @(
+                @{ id = $policy1; conditions = @{ users = @{ excludeGroups = @() } } },
+                @{ id = $policy2; conditions = @{ users = @{ excludeGroups = @() } } }
+            ) }
         }
         Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'PATCH'
+            $Method -eq 'PATCH' -and $Uri.ToString().EndsWith($policy1)
         } -MockWith { throw 'Graph denied the update' }
+        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
+            $Method -eq 'PATCH' -and $Uri.ToString().EndsWith($policy2)
+        }
 
         try {
             Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
@@ -170,8 +185,13 @@ Describe 'Invoke-EmergencyAccessRemediation' {
             throw 'Expected remediation to fail.'
         }
         catch {
+            $_.Exception.Data['Result'].policiesEvaluated | Should -Be 2
+            $_.Exception.Data['Result'].policiesUpdated | Should -Be 1
             $_.Exception.Data['Result'].policiesFailed | Should -Be 1
             $_.Exception.Data['Result'].failed[0].error | Should -Match 'Graph denied'
+            $_.Exception.Data['Result'].updatedPolicyIds | Should -Contain $policy2
         }
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 2 `
+            -ParameterFilter { $Method -eq 'PATCH' }
     }
 }

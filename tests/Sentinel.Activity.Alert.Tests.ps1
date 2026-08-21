@@ -1,6 +1,7 @@
 Describe 'Optional Sentinel emergency activity alerting' {
     BeforeAll {
         $main = Get-Content "$PSScriptRoot\..\infra\main.bicep" -Raw
+        $compiledMain = Get-Content "$PSScriptRoot\..\infra\main.json" -Raw | ConvertFrom-Json
         $parameters = Get-Content "$PSScriptRoot\..\infra\main.parameters.json" -Raw
         $alerting = Get-Content "$PSScriptRoot\..\infra\modules\sentinel-activity-alerting.bicep" -Raw
         $rules = Get-Content "$PSScriptRoot\..\infra\modules\sentinel-activity-rules.bicep" -Raw
@@ -8,6 +9,7 @@ Describe 'Optional Sentinel emergency activity alerting' {
         $preProvision = Get-Content "$PSScriptRoot\..\scripts\Pre-Provision.ps1" -Raw
         $postProvision = Get-Content "$PSScriptRoot\..\scripts\Post-Provision.ps1" -Raw
         $preDown = Get-Content "$PSScriptRoot\..\scripts\Pre-Down.ps1" -Raw
+        $validateWorkflow = Get-Content "$PSScriptRoot\..\.github\workflows\validate.yml" -Raw
     }
 
     It 'is independently opt-in and keeps the Teams webhook secret' {
@@ -48,12 +50,19 @@ Describe 'Optional Sentinel emergency activity alerting' {
 
     It 'supports an authorized Teams API connection as an alternative to a webhook' {
         $main | Should -Match "param sentinelTeamsDeliveryMode string = 'admin-configured'"
+        $compiledMain.parameters.sentinelTeamsDeliveryMode.defaultValue | Should -Be 'admin-configured'
         $parameters | Should -Match 'AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID='
         $alerting | Should -Match "teamsDeliveryMode == 'api-connection'"
         $alerting | Should -Match "Post_message_to_Teams_channel"
         $alerting | Should -Match '/beta/teams/conversation/message/poster/'
         $validate | Should -Match 'The Teams API connection is not authorized'
         $validate | Should -Match 'Teams API connection inputs must be empty when workflow-webhook delivery is selected'
+    }
+
+    It 'fails validation when the checked-in ARM template differs from compiled Bicep' {
+        $validateWorkflow | Should -Match 'az bicep install --version v0.42.1'
+        $validateWorkflow | Should -Match 'az bicep build --file infra/main.bicep'
+        $validateWorkflow | Should -Match 'git diff --exit-code -- infra/main.json'
     }
 
     It 'guides an administrator through one browser authorization' {
