@@ -7,8 +7,11 @@ Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
 Assert-AzdTenantContext
 
 function Get-AccessToken {
-    param([Parameter(Mandatory)][string] $Resource)
-    $token = & az account get-access-token --subscription $env:AZURE_SUBSCRIPTION_ID `
+    param(
+        [Parameter(Mandatory)][string] $Resource,
+        [Parameter(Mandatory)][string] $SubscriptionId
+    )
+    $token = & az account get-access-token --subscription $SubscriptionId `
         --resource $Resource --query accessToken -o tsv
     if ($LASTEXITCODE -ne 0 -or -not $token) {
         throw "Unable to acquire an access token for $Resource."
@@ -46,7 +49,15 @@ if ($env:AZD_OWNED_SENTINEL_ALERT_RULE_ID -or
     $env:AZD_OWNED_SENTINEL_ACCOUNT_CHANGE_RULE_ID -or
     $env:AZD_OWNED_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID -or
     $env:AZD_OWNED_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID) {
-    $armToken = Get-AccessToken 'https://management.azure.com/'
+    $sentinelSubscriptionId = if ($env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID) {
+        $env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID
+    }
+    else {
+        $env:AZURE_SUBSCRIPTION_ID
+    }
+    $armToken = Get-AccessToken `
+        -Resource 'https://management.azure.com/' `
+        -SubscriptionId $sentinelSubscriptionId
     $armHeaders = @{ Authorization = "Bearer $armToken" }
     $rules = @(
         @{
@@ -99,14 +110,14 @@ if ($env:AZD_OWNED_SENTINEL_ALERT_RULE_ID -or
         $isOwned = if ($rule.Type -eq 'roleAssignments') {
             Test-OwnedWorkspaceRoleAssignmentId `
                 -ResourceId $rule.Id `
-                -SubscriptionId $env:AZURE_SUBSCRIPTION_ID `
+                -SubscriptionId $sentinelSubscriptionId `
                 -ResourceGroup $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP `
                 -WorkspaceName $env:AZD_SENTINEL_WORKSPACE_NAME
         }
         else {
             Test-OwnedSentinelResourceId `
                 -ResourceId $rule.Id `
-                -SubscriptionId $env:AZURE_SUBSCRIPTION_ID `
+                -SubscriptionId $sentinelSubscriptionId `
                 -ResourceGroup $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP `
                 -WorkspaceName $env:AZD_SENTINEL_WORKSPACE_NAME `
                 -ResourceType $rule.Type

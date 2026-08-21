@@ -4,6 +4,7 @@ param tags object
 @minLength(1)
 param emergencyAccessGroupObjectId string
 param sentinelWorkspaceName string
+param sentinelWorkspaceSubscriptionId string
 param sentinelWorkspaceResourceGroup string
 param sentinelKql string
 @minLength(1)
@@ -234,7 +235,7 @@ var effectiveSentinelKql = empty(sentinelKql) ? defaultSentinelKql : sentinelKql
 
 module sentinelResources 'sentinel-resources.bicep' = {
   name: 'sentinel-resources'
-  scope: resourceGroup(sentinelWorkspaceResourceGroup)
+  scope: resourceGroup(sentinelWorkspaceSubscriptionId, sentinelWorkspaceResourceGroup)
   params: {
     workspaceName: sentinelWorkspaceName
     namePrefix: namePrefix

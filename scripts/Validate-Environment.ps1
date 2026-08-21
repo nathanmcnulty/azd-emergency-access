@@ -67,6 +67,26 @@ Set-AzdDefault AZURE_LOCATION 'westus2'
 if (-not $env:AZURE_SUBSCRIPTION_ID) {
     throw 'AZURE_SUBSCRIPTION_ID is required.'
 }
+
+function Assert-SubscriptionTenant {
+    param([Parameter(Mandatory)][string] $SubscriptionId)
+
+    Assert-GuidValue 'workspace subscription ID' $SubscriptionId
+    if ($SubscriptionId -eq $env:AZURE_SUBSCRIPTION_ID) {
+        return
+    }
+    $tenantId = & az account show `
+        --subscription $SubscriptionId `
+        --query tenantId `
+        --output tsv `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $tenantId) {
+        throw "Unable to access workspace subscription '$SubscriptionId' with the current Azure CLI session."
+    }
+    if ($tenantId -ne $env:AZURE_TENANT_ID) {
+        throw "Workspace subscription '$SubscriptionId' belongs to tenant '$tenantId', not AZURE_TENANT_ID '$($env:AZURE_TENANT_ID)'."
+    }
+}
 if (-not $env:AZURE_TENANT_ID) {
     $subscriptionTenantId = & az account show `
         --subscription $env:AZURE_SUBSCRIPTION_ID `
@@ -153,6 +173,9 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     }
     if ($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
         Set-AzdDefault AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP
+    }
+    if ($env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID) {
+        Set-AzdDefault AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID $env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID
     }
     if ($env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -notin 'workflow-webhook', 'api-connection', 'admin-configured') {
         throw 'AZD_SENTINEL_TEAMS_DELIVERY_MODE must be workflow-webhook, api-connection, or admin-configured.'
@@ -290,6 +313,9 @@ if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
         if ($env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP) {
             Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP
         }
+        if ($env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID) {
+            Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID $env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID
+        }
     }
     if (-not $env:AZD_SIGNIN_LOG_WORKSPACE_NAME -or -not $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
         throw 'Sign-in alerting requires AZD_SIGNIN_LOG_WORKSPACE_NAME and AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP.'
@@ -307,7 +333,9 @@ if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
         throw 'AZD_SIGNIN_ALERT_EMAIL must contain one plain email address without a display name.'
     }
 
-    $signInWorkspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SIGNIN_LOG_WORKSPACE_NAME"
+    Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID $env:AZURE_SUBSCRIPTION_ID
+    Assert-SubscriptionTenant $env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID
+    $signInWorkspaceId = "/subscriptions/$env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SIGNIN_LOG_WORKSPACE_NAME"
     & az resource show --ids $signInWorkspaceId --only-show-errors | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Sign-in log workspace '$($env:AZD_SIGNIN_LOG_WORKSPACE_NAME)' was not found in resource group '$($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP)'."
@@ -337,7 +365,9 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
     if (-not $env:AZD_SENTINEL_WORKSPACE_NAME -or -not $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP) {
         throw 'Sentinel mode requires AZD_SENTINEL_WORKSPACE_NAME and AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP.'
     }
-    $workspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SENTINEL_WORKSPACE_NAME"
+    Set-AzdDefault AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID $env:AZURE_SUBSCRIPTION_ID
+    Assert-SubscriptionTenant $env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID
+    $workspaceId = "/subscriptions/$env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SENTINEL_WORKSPACE_NAME"
     $expectedAlertRuleId = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/"
     $expectedAutomationRuleId = "$workspaceId/providers/Microsoft.SecurityInsights/automationRules/"
     foreach ($ownership in @(

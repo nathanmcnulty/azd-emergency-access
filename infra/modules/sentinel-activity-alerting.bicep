@@ -2,6 +2,7 @@ param location string
 param namePrefix string
 param tags object = {}
 param workspaceName string
+param workspaceSubscriptionId string
 param workspaceResourceGroup string
 param emergencyUser1ObjectId string
 param emergencyUser2ObjectId string
@@ -294,7 +295,7 @@ resource sentinelAutomationContributor 'Microsoft.Authorization/roleAssignments@
 
 module activityRules 'sentinel-activity-rules.bicep' = {
   name: 'sentinel-activity-rules'
-  scope: resourceGroup(workspaceResourceGroup)
+  scope: resourceGroup(workspaceSubscriptionId, workspaceResourceGroup)
   params: {
     workspaceName: workspaceName
     namePrefix: namePrefix

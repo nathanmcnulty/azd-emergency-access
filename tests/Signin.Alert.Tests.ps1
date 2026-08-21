@@ -11,6 +11,8 @@ Describe 'Optional emergency sign-in alerting' {
         $main | Should -Match "module signInAlerting .* = if \(enableSignInAlerts == 'true'\)"
         $parameters | Should -Match 'AZD_EMERGENCY_USER1_ID='
         $parameters | Should -Match 'AZD_EMERGENCY_USER2_ID='
+        $parameters | Should -Match 'AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID='
+        $main | Should -Match 'scope: resourceGroup\(signInLogWorkspaceSubscriptionId, signInLogWorkspaceResourceGroup\)'
         $alerting | Should -Match '@minLength\(1\)\s*param emergencyUser1ObjectId string'
         $alerting | Should -Match '@minLength\(1\)\s*param emergencyUser2ObjectId string'
     }
@@ -30,6 +32,7 @@ Describe 'Optional emergency sign-in alerting' {
     It 'requires a verified workspace and one plain notification email when enabled' {
         $validate | Should -Match "AZD_ENABLE_SIGNIN_ALERTS -eq 'true'"
         $validate | Should -Match 'AZD_SIGNIN_LOG_WORKSPACE_NAME'
+        $validate | Should -Match 'Assert-SubscriptionTenant \$env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID'
         $validate | Should -Match 'AZD_SIGNIN_ALERT_EMAIL must contain one plain email address'
         $validate | Should -Match 'az resource show --ids \$signInWorkspaceId'
     }

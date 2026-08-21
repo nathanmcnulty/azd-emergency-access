@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "15167874362435935092"
+      "templateHash": "537304499465388115"
     }
   },
   "parameters": {
@@ -68,6 +68,10 @@
       "type": "string",
       "defaultValue": ""
     },
+    "sentinelWorkspaceSubscriptionId": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]"
+    },
     "sentinelWorkspaceResourceGroup": {
       "type": "string",
       "defaultValue": ""
@@ -107,6 +111,10 @@
     "signInLogWorkspaceName": {
       "type": "string",
       "defaultValue": ""
+    },
+    "signInLogWorkspaceSubscriptionId": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]"
     },
     "signInLogWorkspaceResourceGroup": {
       "type": "string",
@@ -1804,6 +1812,9 @@
           "sentinelWorkspaceName": {
             "value": "[parameters('sentinelWorkspaceName')]"
           },
+          "sentinelWorkspaceSubscriptionId": {
+            "value": "[parameters('sentinelWorkspaceSubscriptionId')]"
+          },
           "sentinelWorkspaceResourceGroup": {
             "value": "[parameters('sentinelWorkspaceResourceGroup')]"
           },
@@ -1833,7 +1844,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "3860497030662469938"
+              "templateHash": "14340141512278893935"
             }
           },
           "parameters": {
@@ -1851,6 +1862,9 @@
               "minLength": 1
             },
             "sentinelWorkspaceName": {
+              "type": "string"
+            },
+            "sentinelWorkspaceSubscriptionId": {
               "type": "string"
             },
             "sentinelWorkspaceResourceGroup": {
@@ -2812,6 +2826,7 @@
               "type": "Microsoft.Resources/deployments",
               "apiVersion": "2025-04-01",
               "name": "sentinel-resources",
+              "subscriptionId": "[parameters('sentinelWorkspaceSubscriptionId')]",
               "resourceGroup": "[parameters('sentinelWorkspaceResourceGroup')]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -3000,11 +3015,11 @@
             },
             "alertRuleId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('sentinelWorkspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-resources'), '2025-04-01').outputs.alertRuleId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('sentinelWorkspaceSubscriptionId'), parameters('sentinelWorkspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-resources'), '2025-04-01').outputs.alertRuleId.value]"
             },
             "automationRuleId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('sentinelWorkspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-resources'), '2025-04-01').outputs.automationRuleId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('sentinelWorkspaceSubscriptionId'), parameters('sentinelWorkspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-resources'), '2025-04-01').outputs.automationRuleId.value]"
             }
           }
         }
@@ -3022,7 +3037,7 @@
         "mode": "Incremental",
         "parameters": {
           "location": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('signInLogWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('signInLogWorkspaceName')), '2023-09-01', 'full').location]"
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('signInLogWorkspaceSubscriptionId'), parameters('signInLogWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('signInLogWorkspaceName')), '2023-09-01', 'full').location]"
           },
           "namePrefix": {
             "value": "[parameters('namePrefix')]"
@@ -3031,7 +3046,7 @@
             "value": "[parameters('tags')]"
           },
           "workspaceResourceId": {
-            "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('signInLogWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('signInLogWorkspaceName'))]"
+            "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('signInLogWorkspaceSubscriptionId'), parameters('signInLogWorkspaceResourceGroup')), 'Microsoft.OperationalInsights/workspaces', parameters('signInLogWorkspaceName'))]"
           },
           "emergencyUser1ObjectId": {
             "value": "[parameters('emergencyUser1ObjectId')]"
@@ -3181,6 +3196,9 @@
           "workspaceName": {
             "value": "[parameters('sentinelWorkspaceName')]"
           },
+          "workspaceSubscriptionId": {
+            "value": "[parameters('sentinelWorkspaceSubscriptionId')]"
+          },
           "workspaceResourceGroup": {
             "value": "[parameters('sentinelWorkspaceResourceGroup')]"
           },
@@ -3237,7 +3255,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "11286776391475158874"
+              "templateHash": "3777079478195938878"
             }
           },
           "parameters": {
@@ -3252,6 +3270,9 @@
               "defaultValue": {}
             },
             "workspaceName": {
+              "type": "string"
+            },
+            "workspaceSubscriptionId": {
               "type": "string"
             },
             "workspaceResourceGroup": {
@@ -3501,6 +3522,7 @@
               "type": "Microsoft.Resources/deployments",
               "apiVersion": "2025-04-01",
               "name": "sentinel-activity-rules",
+              "subscriptionId": "[parameters('workspaceSubscriptionId')]",
               "resourceGroup": "[parameters('workspaceResourceGroup')]",
               "properties": {
                 "expressionEvaluationOptions": {
@@ -3886,23 +3908,23 @@
             },
             "signInRuleId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.signInRuleId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('workspaceSubscriptionId'), parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.signInRuleId.value]"
             },
             "adminActivityRuleId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.adminActivityRuleId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('workspaceSubscriptionId'), parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.adminActivityRuleId.value]"
             },
             "accountChangeRuleId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.accountChangeRuleId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('workspaceSubscriptionId'), parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.accountChangeRuleId.value]"
             },
             "automationRuleId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.automationRuleId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('workspaceSubscriptionId'), parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.automationRuleId.value]"
             },
             "sentinelReaderRoleAssignmentId": {
               "type": "string",
-              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.sentinelReaderRoleAssignmentId.value]"
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('workspaceSubscriptionId'), parameters('workspaceResourceGroup')), 'Microsoft.Resources/deployments', 'sentinel-activity-rules'), '2025-04-01').outputs.sentinelReaderRoleAssignmentId.value]"
             },
             "teamsConnectionResourceId": {
               "type": "string",
