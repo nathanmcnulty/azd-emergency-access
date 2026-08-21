@@ -99,6 +99,16 @@ azd provision --preview
 azd up
 ```
 
+To leave identity lifecycle entirely with an external process, supply the existing group ID and disable identity management. The template then does not create or modify emergency users, group membership, Global Administrator assignments, the restricted administrative unit, or TAP configuration. Sign-in or Sentinel activity alerting additionally requires both user object IDs. The deployment still grants the selected workload the Microsoft Graph application roles needed to remediate Conditional Access policies; Sentinel Function mode may also create or configure its authentication application.
+
+```powershell
+azd env set AZD_MANAGE_EMERGENCY_IDENTITIES false
+azd env set AZD_EMERGENCY_GROUP_ID 22222222-2222-2222-2222-222222222222
+azd env set AZD_EMERGENCY_USER1_ID 11111111-1111-1111-1111-111111111111 # required with alerting
+azd env set AZD_EMERGENCY_USER2_ID 44444444-4444-4444-4444-444444444444 # required with alerting
+azd up
+```
+
 In `sentinel-function` mode, the sign-in workspace name, resource group, and subscription default to the configured Sentinel workspace, so only the enable flag and email are additional. The workspace must ingest the tenant's `SigninLogs`; this template intentionally does not change tenant diagnostic settings or log retention. Deployment query validation fails closed if the table is unavailable.
 
 The deployment creates a severity-0 Azure Monitor scheduled-query alert and an email action group in the azd environment's resource group. The alert resource uses the workspace's Azure region. Every five minutes, it searches a one-hour event-time range but selects only records ingested during the preceding five minutes; this accommodates normal ingestion delay without repeatedly alerting on the same record. It matches successful or failed sign-in attempts by either resolved emergency-user object ID. Failed attempts are included because they can reveal misuse even when no login succeeds. The rule is stateless (`autoMitigate: false`), so a later evaluation can notify again rather than remaining suppressed behind an unresolved emergency alert. Azure Monitor groups records found in the same evaluation into one alert notification.
@@ -266,6 +276,7 @@ AuditLogs
 | `AZD_EMERGENCY_USER1_UPN` / `AZD_EMERGENCY_USER2_UPN` | none | No | Existing UPNs; resolved IDs are persisted |
 | `AZD_EMERGENCY_GROUP_ID` | none | No | Existing security-group object ID |
 | `AZD_ADMINISTRATIVE_UNIT_ID` | none | No | Existing administrative-unit object ID |
+| `AZD_MANAGE_EMERGENCY_IDENTITIES` | `true` | Always | Set `false` to require externally managed identities and skip user, group, role, AU, and TAP changes |
 | `AZD_USE_RESTRICTED_AU` | `true` | Always | Create/use a restricted management AU; set `false` to skip |
 | `AZD_ENABLE_TAP_POLICY` | `false` | Always | Enable/configure TAP and create reusable TAPs |
 | `AZD_ENABLE_SIGNIN_ALERTS` | `false` | Always | Deploy an optional critical alert for emergency-account sign-in activity |

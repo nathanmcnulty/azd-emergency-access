@@ -48,6 +48,24 @@ Describe 'Lifecycle security wiring' {
         }
     }
 
+    It 'supports externally managed emergency identities without privileged identity mutations' {
+        $validate | Should -Match "Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'"
+        $validate | Should -Match 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID'
+        $validate | Should -Match 'Alerting with externally managed emergency identities requires AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID'
+        $validate | Should -Match 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false'
+        $identityGuard = $bootstrap.IndexOf("if (`$env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true')")
+        $resolveUser = $bootstrap.LastIndexOf('Resolve-EmergencyUser 1')
+        $globalAdmin = $bootstrap.LastIndexOf('Ensure-GlobalAdministrator $user.id')
+        $identityGuard | Should -BeGreaterOrEqual 0
+        $resolveUser | Should -BeGreaterThan $identityGuard
+        $globalAdmin | Should -BeGreaterThan $resolveUser
+        $bootstrap | Should -Match "\}[\r\n ]+Resolve-SentinelServicePrincipal[\r\n ]+Ensure-FunctionAuthApplication"
+        $tapGuard = $bootstrap.LastIndexOf("if (`$env:AZD_ENABLE_TAP_POLICY -eq 'true')")
+        $tapInvocation = $bootstrap.LastIndexOf('Invoke-TapOnboarding -Users $users')
+        $tapGuard | Should -BeGreaterThan $identityGuard
+        $tapInvocation | Should -BeGreaterThan $tapGuard
+    }
+
     It 'cleans owned Sentinel rules even after a deployment mode change' {
         $preDown | Should -Match 'AZD_OWNED_SENTINEL_ALERT_RULE_ID -or'
         $preDown | Should -Not -Match "AZD_DEPLOYMENT_MODE -eq 'sentinel-function'"

@@ -102,6 +102,7 @@ Set-AzdDefault AZD_SCHEDULE_CRON '0 0 */6 * * *'
 Set-AzdDefault AZD_SCHEDULE_INTERVAL '6'
 Set-AzdDefault AZD_SCHEDULE_FREQUENCY 'Hour'
 Set-AzdDefault AZD_AUTOMATION_TIME_ZONE 'Etc/UTC'
+Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
 Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
@@ -151,7 +152,7 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
+foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
@@ -351,6 +352,20 @@ foreach ($guidName in @(
     Assert-GuidValue $guidName ([Environment]::GetEnvironmentVariable($guidName))
 }
 
+if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'false') {
+    if (-not $env:AZD_EMERGENCY_GROUP_ID) {
+        throw 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID.'
+    }
+    if (($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true' -or
+        $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') -and
+        (-not $env:AZD_EMERGENCY_USER1_ID -or -not $env:AZD_EMERGENCY_USER2_ID)) {
+        throw 'Alerting with externally managed emergency identities requires AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID.'
+    }
+    if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+        throw 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false.'
+    }
+}
+
 if ($env:AZD_SCHEDULE_CRON -notmatch '^\S+(\s+\S+){5}$') {
     throw 'AZD_SCHEDULE_CRON must be a six-field NCRONTAB expression.'
 }
@@ -400,7 +415,8 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
 
 $user1Missing = -not $env:AZD_EMERGENCY_USER1_ID -and -not $env:AZD_EMERGENCY_USER1_UPN
 $user2Missing = -not $env:AZD_EMERGENCY_USER2_ID -and -not $env:AZD_EMERGENCY_USER2_UPN
-if (($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
+if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and
+    ($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
     throw 'Set AZD_EMERGENCY_DOMAIN when either emergency user needs to be created.'
 }
 
