@@ -44,7 +44,7 @@ function Test-SentinelNotificationDelivery {
         throw 'Unable to obtain the Sentinel notification playbook trigger callback for delivery testing.'
     }
 
-    $startedUtc = [DateTimeOffset]::UtcNow
+    $trackingId = [guid]::NewGuid().ToString()
     $payload = @{
         object = @{
             id = "$PlaybookResourceId/providers/Microsoft.SecurityInsights/incidents/delivery-smoke-test"
@@ -62,7 +62,12 @@ function Test-SentinelNotificationDelivery {
     } | ConvertTo-Json -Depth 8 -Compress
 
     try {
-        $response = Invoke-WebRequest -Method Post -Uri $callback.value -ContentType 'application/json' -Body $payload
+        $response = Invoke-WebRequest `
+            -Method Post `
+            -Uri $callback.value `
+            -ContentType 'application/json' `
+            -Headers @{ 'x-ms-client-tracking-id' = $trackingId } `
+            -Body $payload
     }
     catch {
         throw "The Sentinel notification playbook rejected the delivery smoke test. $($_.Exception.Message)"
@@ -84,14 +89,13 @@ function Test-SentinelNotificationDelivery {
             throw 'Unable to inspect the Sentinel notification playbook smoke-test run.'
         }
         $run = @($runs.value) |
-            Where-Object { [DateTimeOffset]$_.properties.startTime -ge $startedUtc.AddSeconds(-2) } |
-            Sort-Object { [DateTimeOffset]$_.properties.startTime } -Descending |
+            Where-Object { $_.properties.correlation.clientTrackingId -eq $trackingId } |
             Select-Object -First 1
     } while ((-not $run -or $run.properties.status -in 'Running', 'Waiting') -and
         [DateTimeOffset]::UtcNow -lt $deadline)
 
     if (-not $run) {
-        throw 'No Sentinel notification playbook run appeared within 60 seconds.'
+        throw "No Sentinel notification playbook run with tracking ID '$trackingId' appeared within 60 seconds."
     }
     if ($run.properties.status -ne 'Succeeded') {
         $actions = & az rest `

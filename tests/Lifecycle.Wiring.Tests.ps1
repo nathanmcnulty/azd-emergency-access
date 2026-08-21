@@ -112,6 +112,9 @@ Describe 'Lifecycle security wiring' {
         $testDeployment | Should -Match 'Test-SentinelNotificationDelivery'
         $testDeployment | Should -Match 'listCallbackUrl\?api-version=2019-05-01'
         $testDeployment | Should -Match '\[TEST\] Emergency access notification delivery validation'
+        $testDeployment | Should -Match ([regex]::Escape("-Headers @{ 'x-ms-client-tracking-id' = `$trackingId }"))
+        $testDeployment | Should -Match 'properties\.correlation\.clientTrackingId -eq \$trackingId'
+        $testDeployment | Should -Not -Match 'startTime -ge \$startedUtc'
         $testDeployment | Should -Match "status -ne 'Succeeded'"
     }
 
