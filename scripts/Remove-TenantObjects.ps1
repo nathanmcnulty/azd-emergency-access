@@ -13,7 +13,7 @@ if (-not $DeleteObjectsCreatedByThisEnvironment) {
 }
 
 try {
-    Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -NoWelcome | Out-Null
+    Connect-MgGraph -NoWelcome | Out-Null
 }
 catch {
     throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"

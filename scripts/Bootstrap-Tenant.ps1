@@ -33,13 +33,14 @@ function Connect-ProjectGraph {
     }
     $requiredScopes = @($scopes | Select-Object -Unique)
     $authenticationInitialized = $env:AZD_GRAPH_AUTH_INITIALIZED -eq 'true'
+    $initializeAuthentication = -not $authenticationInitialized -and $Phase -ne 'Workload'
 
     try {
-        if ($authenticationInitialized) {
-            Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -NoWelcome | Out-Null
+        if ($initializeAuthentication) {
+            Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -Scopes $requiredScopes -NoWelcome | Out-Null
         }
         else {
-            Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -Scopes $requiredScopes -NoWelcome | Out-Null
+            Connect-MgGraph -NoWelcome | Out-Null
         }
     }
     catch {
@@ -50,16 +51,10 @@ function Connect-ProjectGraph {
         throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
     }
     $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
-    if ($missingScopes.Count -gt 0 -and $authenticationInitialized) {
-        Write-Warning 'The cached Microsoft Graph context is missing required scopes; requesting the complete scope set once.'
-        Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -Scopes $requiredScopes -NoWelcome | Out-Null
-        $context = Get-MgContext
-        $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
-    }
     if ($missingScopes.Count -gt 0) {
-        throw "Microsoft Graph authentication is missing required delegated scopes: $($missingScopes -join ', ')."
+        throw "The cached Microsoft Graph context is missing required delegated scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry. No additional authentication request was started."
     }
-    if (-not $authenticationInitialized) {
+    if ($initializeAuthentication) {
         Set-AzdValue AZD_GRAPH_AUTH_INITIALIZED 'true'
     }
 }
