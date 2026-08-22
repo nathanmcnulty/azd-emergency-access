@@ -7,9 +7,9 @@ Describe 'Administrator documentation' {
 
     It 'keeps the root quickstart to init and up' {
         (Get-Content "$repoRoot\README.md").Count | Should -BeLessOrEqual 150
-        $readme | Should -Match 'azd init --template nathanmcnulty/azd-emergency-access\s+azd up'
+        $readme | Should -Match 'azd init --template nathanmcnulty/azd-emergency-access --branch v1\.0\.0\s+azd up'
         @($catalog.quickstartCommands) | Should -Be @(
-            'azd init --template nathanmcnulty/azd-emergency-access',
+            'azd init --template nathanmcnulty/azd-emergency-access --branch v1.0.0',
             'azd up'
         )
     }

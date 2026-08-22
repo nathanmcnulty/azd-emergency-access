@@ -154,7 +154,9 @@ if ($ownedClientId) {
         throw 'Function authentication application ownership record is invalid; refusing deletion.'
     }
 
-    $graphToken = Get-AccessToken 'https://graph.microsoft.com/'
+    $graphToken = Get-AccessToken `
+        -Resource 'https://graph.microsoft.com/' `
+        -SubscriptionId $env:AZURE_SUBSCRIPTION_ID
     $graphHeaders = @{ Authorization = "Bearer $graphToken" }
     if ($env:AZD_OWNED_FUNCTION_AUTH_SERVICE_PRINCIPAL_ID) {
         $parsedServicePrincipalId = [guid]::Empty

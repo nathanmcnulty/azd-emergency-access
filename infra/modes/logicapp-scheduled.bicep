@@ -90,6 +90,13 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
               inputs: {
                 method: 'GET'
                 uri: '@variables(\'NextLink\')'
+                retryPolicy: {
+                  type: 'exponential'
+                  count: 4
+                  interval: 'PT2S'
+                  minimumInterval: 'PT1S'
+                  maximumInterval: 'PT30S'
+                }
                 authentication: {
                   type: 'ManagedServiceIdentity'
                   audience: 'https://graph.microsoft.com'
@@ -141,14 +148,33 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
           foreach: '@variables(\'Policies\')'
           operationOptions: 'Sequential'
           actions: {
-            Group_is_missing: {
+            Get_fresh_policy: {
+              type: 'Http'
+              inputs: {
+                method: 'GET'
+                uri: '@concat(\'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/\', items(\'Remediate_each_policy\')?[\'id\'])'
+                retryPolicy: {
+                  type: 'exponential'
+                  count: 4
+                  interval: 'PT2S'
+                  minimumInterval: 'PT1S'
+                  maximumInterval: 'PT30S'
+                }
+                authentication: {
+                  type: 'ManagedServiceIdentity'
+                  audience: 'https://graph.microsoft.com'
+                }
+              }
+              runAfter: {}
+            }
+            Fresh_policy_requires_update: {
               type: 'If'
               expression: {
                 and: [
                   {
                     not: {
                       contains: [
-                        '@coalesce(items(\'Remediate_each_policy\')?[\'conditions\']?[\'users\']?[\'includeUsers\'], json(\'[]\'))'
+                        '@coalesce(body(\'Get_fresh_policy\')?[\'conditions\']?[\'users\']?[\'includeUsers\'], json(\'[]\'))'
                         'None'
                       ]
                     }
@@ -156,7 +182,7 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   {
                     not: {
                       contains: [
-                        '@coalesce(items(\'Remediate_each_policy\')?[\'conditions\']?[\'users\']?[\'excludeGroups\'], json(\'[]\'))'
+                        '@coalesce(body(\'Get_fresh_policy\')?[\'conditions\']?[\'users\']?[\'excludeGroups\'], json(\'[]\'))'
                         emergencyAccessGroupObjectId
                       ]
                     }
@@ -175,7 +201,7 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                     body: {
                       conditions: {
                         users: {
-                          excludeGroups: '@union(coalesce(items(\'Remediate_each_policy\')?[\'conditions\']?[\'users\']?[\'excludeGroups\'], json(\'[]\')), array(\'${emergencyAccessGroupObjectId}\'))'
+                          excludeGroups: '@union(coalesce(body(\'Get_fresh_policy\')?[\'conditions\']?[\'users\']?[\'excludeGroups\'], json(\'[]\')), array(\'${emergencyAccessGroupObjectId}\'))'
                         }
                       }
                     }
@@ -183,8 +209,71 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                       type: 'ManagedServiceIdentity'
                       audience: 'https://graph.microsoft.com'
                     }
+                    retryPolicy: {
+                      type: 'exponential'
+                      count: 4
+                      interval: 'PT2S'
+                      minimumInterval: 'PT1S'
+                      maximumInterval: 'PT30S'
+                    }
                   }
                   runAfter: {}
+                }
+                Verify_policy: {
+                  type: 'Http'
+                  inputs: {
+                    method: 'GET'
+                    uri: '@concat(\'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/\', items(\'Remediate_each_policy\')?[\'id\'])'
+                    retryPolicy: {
+                      type: 'exponential'
+                      count: 4
+                      interval: 'PT2S'
+                      minimumInterval: 'PT1S'
+                      maximumInterval: 'PT30S'
+                    }
+                    authentication: {
+                      type: 'ManagedServiceIdentity'
+                      audience: 'https://graph.microsoft.com'
+                    }
+                  }
+                  runAfter: {
+                    Patch_policy: [
+                      'Succeeded'
+                    ]
+                  }
+                }
+                Verify_group_excluded: {
+                  type: 'If'
+                  expression: {
+                    not: {
+                      contains: [
+                        '@coalesce(body(\'Verify_policy\')?[\'conditions\']?[\'users\']?[\'excludeGroups\'], json(\'[]\'))'
+                        emergencyAccessGroupObjectId
+                      ]
+                    }
+                  }
+                  actions: {
+                    Record_verification_failure: {
+                      type: 'AppendToArrayVariable'
+                      inputs: {
+                        name: 'PatchFailures'
+                        value: {
+                          policyId: '@items(\'Remediate_each_policy\')?[\'id\']'
+                          statusCode: '@outputs(\'Verify_policy\')?[\'statusCode\']'
+                          error: 'Emergency group exclusion was absent after PATCH.'
+                        }
+                      }
+                      runAfter: {}
+                    }
+                  }
+                  else: {
+                    actions: {}
+                  }
+                  runAfter: {
+                    Verify_policy: [
+                      'Succeeded'
+                    ]
+                  }
                 }
                 Record_patch_failure: {
                   type: 'AppendToArrayVariable'
@@ -207,7 +296,11 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
               else: {
                 actions: {}
               }
-              runAfter: {}
+              runAfter: {
+                Get_fresh_policy: [
+                  'Succeeded'
+                ]
+              }
             }
           }
           runAfter: {

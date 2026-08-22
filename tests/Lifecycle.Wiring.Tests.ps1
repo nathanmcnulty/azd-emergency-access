@@ -92,7 +92,7 @@ Describe 'Lifecycle security wiring' {
     It 'supports externally managed emergency identities without privileged identity mutations' {
         $validate | Should -Match "Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'"
         $validate | Should -Match 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID'
-        $validate | Should -Match 'Alerting with externally managed emergency identities requires AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID'
+        $validate | Should -Match 'Externally managed emergency identities require AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID for read-only validation'
         $validate | Should -Match 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false'
         $identityPhase = $bootstrap.IndexOf("if (`$Phase -in 'All', 'Identities')")
         $identityGuard = $bootstrap.IndexOf("if (`$env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true')", $identityPhase)
@@ -121,13 +121,27 @@ Describe 'Lifecycle security wiring' {
         $bootstrap | Should -Match 'UserAuthenticationMethod\.Read\.All'
         $bootstrap | Should -Match 'authentication/fido2Methods'
         $bootstrap | Should -Match "passkeyType -eq 'deviceBound'"
-        $bootstrap | Should -Match '\$securityKeys\.Count -lt 2'
+        $bootstrap | Should -Match '\$allowedKeys\.Count -lt 2'
+        $bootstrap | Should -Match 'AZD_SECURITY_KEY_DRILL_FINGERPRINT'
         $bootstrap | Should -Not -Match 'AZD_AUTHENTICATION_READY'
         $bootstrap | Should -Not -Match 'Confirm-AuthenticationReady'
         $bootstrap | Should -Match 'authentication/temporaryAccessPassMethods/\$\(\$createdTap\.MethodId\)'
         $bootstrap | Should -Match 'One or more onboarding TAPs could not be removed'
         $bootstrap | Should -Match 'AZD_ONBOARDED_EMERGENCY_USER_IDS'
         $remediation | Should -Match ([regex]::Escape("'None' -in `$includeUsers"))
+    }
+
+    It 'grants workload Graph roles only after immediate protection and authentication gates' {
+        $workloadStart = $bootstrap.LastIndexOf("if (`$Phase -in 'All', 'Workload')")
+        $remediation = $bootstrap.IndexOf('Invoke-EmergencyAccessRemediation', $workloadStart)
+        $keyGate = $bootstrap.IndexOf('Assert-EmergencySecurityKeys', $remediation)
+        $directoryRoles = $bootstrap.IndexOf("-RoleName 'Global Administrator'", $keyGate)
+        $workloadRoles = $bootstrap.IndexOf('Ensure-GraphAppRoles $principalId.Trim()', $directoryRoles)
+
+        $remediation | Should -BeGreaterThan $workloadStart
+        $keyGate | Should -BeGreaterThan $remediation
+        $directoryRoles | Should -BeGreaterThan $keyGate
+        $workloadRoles | Should -BeGreaterThan $directoryRoles
     }
 
     It 'supports a supplemental lower-privilege emergency account' {
@@ -176,7 +190,8 @@ Describe 'Lifecycle security wiring' {
     }
 
     It 'merges the emergency group into the existing TAP targets' {
-        $bootstrap | Should -Match "Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass' -Beta"
+        $bootstrap | Should -Match "Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'"
+        $bootstrap | Should -Not -Match "authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass' -Beta"
         $bootstrap | Should -Match '\$includeTargets = @\(\$currentTap.includeTargets\)'
         $bootstrap | Should -Not -Match 'defaultLifetimeInMinutes = 120'
         $bootstrap | Should -Not -Match 'Enable Temporary Access Pass and create reusable 2-hour TAPs'
@@ -253,6 +268,9 @@ Describe 'Lifecycle security wiring' {
         $cleanup | Should -Match 'rollback was attempted for every recorded policy change'
         $cleanup | Should -Match 'Connect-MgGraph'
         $cleanup | Should -Match 'AZD_OWNED_EMERGENCY_USER3_ID'
+        $cleanup | Should -Match 'AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH'
+        $cleanup | Should -Match 'AZD_EMERGENCY_GROUP_MEMBER_COUNT'
+        $cleanup | Should -Match 'AZD_SECURITY_KEY_DRILL_FINGERPRINT'
         $cleanup | Should -Match 'function Remove-TapGroupReference'
         $cleanup | Should -Match 'Policy\.ReadWrite\.AuthenticationMethod'
         $cleanup | Should -Match 'Connect-MgGraph -NoWelcome'

@@ -39,7 +39,7 @@ Email and Teams alerting require Entra `SigninLogs` and `AuditLogs` to already f
 Run:
 
 ```powershell
-azd init --template nathanmcnulty/azd-emergency-access
+azd init --template nathanmcnulty/azd-emergency-access --branch v1.0.0
 azd up
 ```
 
@@ -57,11 +57,11 @@ Press Enter to accept choices marked `[default]`. The wizard reprompts invalid i
 
 ### Finish account onboarding
 
-If TAP onboarding was selected, each reusable 60-minute TAP is displayed exactly once. The deployment pauses while the custodians register passkeys, verifies that each account has two device-bound FIDO2 security keys, deletes the temporary passes, revokes the onboarding sessions, and only then assigns roles. Before closing the terminal:
+If TAP onboarding was selected, each reusable 60-minute TAP is displayed exactly once. During interactive setup, the deployment pauses while the custodians register passkeys, verifies that the passkey policy applies and that each account has two device-bound FIDO2 methods, deletes the temporary passes, revokes the onboarding sessions, requires a sign-in drill with each physical key, revokes the drill sessions, and only then assigns roles. Noninteractive setup can verify pre-registered keys and reconcile roles but cannot perform the drill; it remains operationally incomplete until `azd hooks run postprovision` is rerun interactively to complete the drill and revoke its sessions. Before closing the terminal:
 
 1. Securely give each TAP to its intended custodian.
 2. Sign in as each emergency account and register at least two physical FIDO2 security keys.
-3. Test both accounts through the documented recovery procedure.
+3. Complete a fresh sign-in with each physical key and test both accounts through the documented recovery procedure.
 4. Confirm the selected email and Teams notifications arrive.
 5. Store credentials and recovery devices separately from normal administrator credentials.
 

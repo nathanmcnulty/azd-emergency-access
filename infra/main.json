@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "8790044751768549592"
+      "templateHash": "15806095843171889576"
     }
   },
   "parameters": {
@@ -241,7 +241,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4121002160064780786"
+              "templateHash": "7140322395993799785"
             }
           },
           "parameters": {
@@ -272,7 +272,7 @@
             }
           },
           "variables": {
-            "runbookScript": "param(\n  [Parameter(Mandatory = $true)]\n  [string] $EmergencyAccessGroupObjectId\n)\n\n$ErrorActionPreference = 'Stop'\n$graphRoot = 'https://graph.microsoft.com/v1.0'\nDisable-AzContextAutosave -Scope Process\n$context = (Connect-AzAccount -Identity).Context\n$token = (Get-AzAccessToken -ResourceUrl 'https://graph.microsoft.com' -TenantId $context.Tenant.Id).Token\nif ($token -is [System.Security.SecureString]) {\n  $token = [System.Net.NetworkCredential]::new('', $token).Password\n}\n$headers = @{\n  Authorization = [string]::Concat('Bearer', [char]32, $token)\n  'Content-Type' = 'application/json'\n}\n\n$policies = [System.Collections.Generic.List[object]]::new()\n$nextLink = \"$graphRoot/identity/conditionalAccess/policies\"\nwhile ($nextLink) {\n  $page = Invoke-RestMethod -Method Get -Uri $nextLink -Headers $headers\n  foreach ($policy in @($page.value)) {\n    $policies.Add($policy)\n  }\n  $nextLink = $page.'@odata.nextLink'\n}\n\n$results = foreach ($policy in $policies) {\n  $existing = @($policy.conditions.users.excludeGroups | Where-Object { $_ })\n  $merged = @($existing + $EmergencyAccessGroupObjectId | Sort-Object -Unique)\n  $missing = $EmergencyAccessGroupObjectId -notin $existing\n\n  if ($missing) {\n    $body = @{\n      conditions = @{\n        users = @{\n          excludeGroups = $merged\n        }\n      }\n    } | ConvertTo-Json -Depth 10\n    try {\n      Invoke-RestMethod `\n        -Method Patch `\n        -Uri \"$graphRoot/identity/conditionalAccess/policies/$($policy.id)\" `\n        -Headers $headers `\n        -Body $body | Out-Null\n    }\n    catch {\n      [pscustomobject]@{\n        policyId = $policy.id\n        displayName = $policy.displayName\n        status = 'Failed'\n        previousExcludeGroups = $existing\n        excludeGroups = $merged\n        error = $_.Exception.Message\n      }\n      continue\n    }\n  }\n\n  [pscustomobject]@{\n    policyId = $policy.id\n    displayName = $policy.displayName\n    status = if ($missing) { 'Updated' } else { 'AlreadyExcluded' }\n    previousExcludeGroups = $existing\n    excludeGroups = $merged\n  }\n}\n\n$summary = [pscustomobject]@{\n  policyCount = $policies.Count\n  updatedCount = @($results | Where-Object status -eq 'Updated').Count\n  failedCount = @($results | Where-Object status -eq 'Failed').Count\n  results = @($results)\n}\n$summaryJson = $summary | ConvertTo-Json -Depth 30\n$summaryJson\nif ($summary.failedCount -gt 0) {\n  throw \"One or more Conditional Access policies failed remediation. Result: $summaryJson\"\n}\n",
+            "runbookScript": "param(\n  [Parameter(Mandatory = $true)]\n  [string] $EmergencyAccessGroupObjectId\n)\n\n$ErrorActionPreference = 'Stop'\n$graphRoot = 'https://graph.microsoft.com/v1.0'\nDisable-AzContextAutosave -Scope Process\n$context = (Connect-AzAccount -Identity).Context\n$token = (Get-AzAccessToken -ResourceUrl 'https://graph.microsoft.com' -TenantId $context.Tenant.Id).Token\nif ($token -is [System.Security.SecureString]) {\n  $token = [System.Net.NetworkCredential]::new('', $token).Password\n}\n$headers = @{\n  Authorization = [string]::Concat('Bearer', [char]32, $token)\n  'Content-Type' = 'application/json'\n}\n\nfunction Invoke-GraphRequest {\n  param(\n    [Parameter(Mandatory = $true)]\n    [ValidateSet('GET', 'PATCH')]\n    [string] $Method,\n    [Parameter(Mandatory = $true)]\n    [string] $Uri,\n    [string] $Body\n  )\n\n  for ($attempt = 1; $attempt -le 4; $attempt++) {\n    try {\n      $parameters = @{\n        Method = $Method\n        Uri = $Uri\n        Headers = $headers\n      }\n      if ($Body) {\n        $parameters.Body = $Body\n      }\n      return Invoke-RestMethod @parameters\n    }\n    catch {\n      $statusCode = if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {\n        [int]$_.Exception.Response.StatusCode\n      }\n      elseif ($_.Exception.Message -match 'HTTP\\s+(429|503)') {\n        [int]$Matches[1]\n      }\n      else {\n        0\n      }\n      if ($statusCode -notin 429, 503 -or $attempt -eq 4) {\n        throw\n      }\n\n      $delaySeconds = [math]::Pow(2, $attempt - 1)\n      $retryAfter = $_.Exception.Response.Headers.RetryAfter\n      if ($retryAfter -and $retryAfter.Delta) {\n        $delaySeconds = [math]::Ceiling($retryAfter.Delta.TotalSeconds)\n      }\n      elseif ($retryAfter -and $retryAfter.Date) {\n        $delaySeconds = [math]::Ceiling(($retryAfter.Date - [DateTimeOffset]::UtcNow).TotalSeconds)\n      }\n      Start-Sleep -Seconds ([math]::Max(1, [math]::Min(30, $delaySeconds)))\n    }\n  }\n}\n\n$policies = [System.Collections.Generic.List[object]]::new()\n$nextLink = \"$graphRoot/identity/conditionalAccess/policies\"\nwhile ($nextLink) {\n  $page = Invoke-GraphRequest -Method GET -Uri $nextLink\n  foreach ($policy in @($page.value)) {\n    $policies.Add($policy)\n  }\n  $nextLink = $page.'@odata.nextLink'\n}\n\n$results = foreach ($policy in $policies) {\n  $policyUri = \"$graphRoot/identity/conditionalAccess/policies/$($policy.id)\"\n  try {\n    $freshPolicy = Invoke-GraphRequest -Method GET -Uri $policyUri\n    $includeUsers = @($freshPolicy.conditions.users.includeUsers)\n    $existing = @(\n      $freshPolicy.conditions.users.excludeGroups |\n        Where-Object { $_ } |\n        ForEach-Object { [string]$_ } |\n        Select-Object -Unique\n    )\n    if ('None' -in $includeUsers) {\n      [pscustomobject]@{\n        policyId = $policy.id\n        displayName = $freshPolicy.displayName\n        status = 'NotUserTargeted'\n        previousExcludeGroups = $existing\n        excludeGroups = $existing\n      }\n      continue\n    }\n    if ($EmergencyAccessGroupObjectId -in $existing) {\n      [pscustomobject]@{\n        policyId = $policy.id\n        displayName = $freshPolicy.displayName\n        status = 'AlreadyExcluded'\n        previousExcludeGroups = $existing\n        excludeGroups = $existing\n      }\n      continue\n    }\n\n    $merged = @($existing + $EmergencyAccessGroupObjectId | Select-Object -Unique)\n    $body = @{\n      conditions = @{\n        users = @{\n          excludeGroups = $merged\n        }\n      }\n    } | ConvertTo-Json -Depth 10\n    Invoke-GraphRequest -Method PATCH -Uri $policyUri -Body $body | Out-Null\n    $verifiedPolicy = Invoke-GraphRequest -Method GET -Uri $policyUri\n    if ($EmergencyAccessGroupObjectId -notin @($verifiedPolicy.conditions.users.excludeGroups)) {\n      throw \"Conditional Access policy '$($policy.id)' did not contain the emergency group after PATCH.\"\n    }\n\n    [pscustomobject]@{\n      policyId = $policy.id\n      displayName = $freshPolicy.displayName\n      status = 'Updated'\n      previousExcludeGroups = $existing\n      excludeGroups = $merged\n    }\n  }\n  catch {\n    [pscustomobject]@{\n      policyId = $policy.id\n      displayName = $policy.displayName\n      status = 'Failed'\n      error = $_.Exception.Message\n    }\n  }\n}\n\n$summary = [pscustomobject]@{\n  policyCount = $policies.Count\n  updatedCount = @($results | Where-Object status -eq 'Updated').Count\n  failedCount = @($results | Where-Object status -eq 'Failed').Count\n  results = @($results)\n}\n$summaryJson = $summary | ConvertTo-Json -Depth 30\n$summaryJson\nif ($summary.failedCount -gt 0) {\n  throw \"One or more Conditional Access policies failed remediation. Result: $summaryJson\"\n}\n",
             "publisherIdentityName": "[format('{0}-runbook-publisher-id', parameters('namePrefix'))]",
             "publisherIdentityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('publisherIdentityName'))]",
             "automationContributorRoleId": "f353d9bd-d4a6-484e-a77a-8050b599b867"
@@ -1507,7 +1507,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "9643908492267858585"
+              "templateHash": "8696108213466159550"
             }
           },
           "parameters": {
@@ -1620,6 +1620,13 @@
                           "inputs": {
                             "method": "GET",
                             "uri": "@variables('NextLink')",
+                            "retryPolicy": {
+                              "type": "exponential",
+                              "count": 4,
+                              "interval": "PT2S",
+                              "minimumInterval": "PT1S",
+                              "maximumInterval": "PT30S"
+                            },
                             "authentication": {
                               "type": "ManagedServiceIdentity",
                               "audience": "https://graph.microsoft.com"
@@ -1671,14 +1678,33 @@
                       "foreach": "@variables('Policies')",
                       "operationOptions": "Sequential",
                       "actions": {
-                        "Group_is_missing": {
+                        "Get_fresh_policy": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "GET",
+                            "uri": "@concat('https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/', items('Remediate_each_policy')?['id'])",
+                            "retryPolicy": {
+                              "type": "exponential",
+                              "count": 4,
+                              "interval": "PT2S",
+                              "minimumInterval": "PT1S",
+                              "maximumInterval": "PT30S"
+                            },
+                            "authentication": {
+                              "type": "ManagedServiceIdentity",
+                              "audience": "https://graph.microsoft.com"
+                            }
+                          },
+                          "runAfter": {}
+                        },
+                        "Fresh_policy_requires_update": {
                           "type": "If",
                           "expression": {
                             "and": [
                               {
                                 "not": {
                                   "contains": [
-                                    "@coalesce(items('Remediate_each_policy')?['conditions']?['users']?['includeUsers'], json('[]'))",
+                                    "@coalesce(body('Get_fresh_policy')?['conditions']?['users']?['includeUsers'], json('[]'))",
                                     "None"
                                   ]
                                 }
@@ -1686,7 +1712,7 @@
                               {
                                 "not": {
                                   "contains": [
-                                    "@coalesce(items('Remediate_each_policy')?['conditions']?['users']?['excludeGroups'], json('[]'))",
+                                    "@coalesce(body('Get_fresh_policy')?['conditions']?['users']?['excludeGroups'], json('[]'))",
                                     "[parameters('emergencyAccessGroupObjectId')]"
                                   ]
                                 }
@@ -1705,16 +1731,79 @@
                                 "body": {
                                   "conditions": {
                                     "users": {
-                                      "excludeGroups": "[format('@union(coalesce(items(''Remediate_each_policy'')?[''conditions'']?[''users'']?[''excludeGroups''], json(''[]'')), array(''{0}''))', parameters('emergencyAccessGroupObjectId'))]"
+                                      "excludeGroups": "[format('@union(coalesce(body(''Get_fresh_policy'')?[''conditions'']?[''users'']?[''excludeGroups''], json(''[]'')), array(''{0}''))', parameters('emergencyAccessGroupObjectId'))]"
                                     }
                                   }
                                 },
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "audience": "https://graph.microsoft.com"
+                                },
+                                "retryPolicy": {
+                                  "type": "exponential",
+                                  "count": 4,
+                                  "interval": "PT2S",
+                                  "minimumInterval": "PT1S",
+                                  "maximumInterval": "PT30S"
                                 }
                               },
                               "runAfter": {}
+                            },
+                            "Verify_policy": {
+                              "type": "Http",
+                              "inputs": {
+                                "method": "GET",
+                                "uri": "@concat('https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/', items('Remediate_each_policy')?['id'])",
+                                "retryPolicy": {
+                                  "type": "exponential",
+                                  "count": 4,
+                                  "interval": "PT2S",
+                                  "minimumInterval": "PT1S",
+                                  "maximumInterval": "PT30S"
+                                },
+                                "authentication": {
+                                  "type": "ManagedServiceIdentity",
+                                  "audience": "https://graph.microsoft.com"
+                                }
+                              },
+                              "runAfter": {
+                                "Patch_policy": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Verify_group_excluded": {
+                              "type": "If",
+                              "expression": {
+                                "not": {
+                                  "contains": [
+                                    "@coalesce(body('Verify_policy')?['conditions']?['users']?['excludeGroups'], json('[]'))",
+                                    "[parameters('emergencyAccessGroupObjectId')]"
+                                  ]
+                                }
+                              },
+                              "actions": {
+                                "Record_verification_failure": {
+                                  "type": "AppendToArrayVariable",
+                                  "inputs": {
+                                    "name": "PatchFailures",
+                                    "value": {
+                                      "policyId": "@items('Remediate_each_policy')?['id']",
+                                      "statusCode": "@outputs('Verify_policy')?['statusCode']",
+                                      "error": "Emergency group exclusion was absent after PATCH."
+                                    }
+                                  },
+                                  "runAfter": {}
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              },
+                              "runAfter": {
+                                "Verify_policy": [
+                                  "Succeeded"
+                                ]
+                              }
                             },
                             "Record_patch_failure": {
                               "type": "AppendToArrayVariable",
@@ -1737,7 +1826,11 @@
                           "else": {
                             "actions": {}
                           },
-                          "runAfter": {}
+                          "runAfter": {
+                            "Get_fresh_policy": [
+                              "Succeeded"
+                            ]
+                          }
                         }
                       },
                       "runAfter": {

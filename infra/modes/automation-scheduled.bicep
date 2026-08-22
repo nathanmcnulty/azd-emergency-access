@@ -87,10 +87,59 @@ $headers = @{
   'Content-Type' = 'application/json'
 }
 
+function Invoke-GraphRequest {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('GET', 'PATCH')]
+    [string] $Method,
+    [Parameter(Mandatory = $true)]
+    [string] $Uri,
+    [string] $Body
+  )
+
+  for ($attempt = 1; $attempt -le 4; $attempt++) {
+    try {
+      $parameters = @{
+        Method = $Method
+        Uri = $Uri
+        Headers = $headers
+      }
+      if ($Body) {
+        $parameters.Body = $Body
+      }
+      return Invoke-RestMethod @parameters
+    }
+    catch {
+      $statusCode = if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+        [int]$_.Exception.Response.StatusCode
+      }
+      elseif ($_.Exception.Message -match 'HTTP\s+(429|503)') {
+        [int]$Matches[1]
+      }
+      else {
+        0
+      }
+      if ($statusCode -notin 429, 503 -or $attempt -eq 4) {
+        throw
+      }
+
+      $delaySeconds = [math]::Pow(2, $attempt - 1)
+      $retryAfter = $_.Exception.Response.Headers.RetryAfter
+      if ($retryAfter -and $retryAfter.Delta) {
+        $delaySeconds = [math]::Ceiling($retryAfter.Delta.TotalSeconds)
+      }
+      elseif ($retryAfter -and $retryAfter.Date) {
+        $delaySeconds = [math]::Ceiling(($retryAfter.Date - [DateTimeOffset]::UtcNow).TotalSeconds)
+      }
+      Start-Sleep -Seconds ([math]::Max(1, [math]::Min(30, $delaySeconds)))
+    }
+  }
+}
+
 $policies = [System.Collections.Generic.List[object]]::new()
 $nextLink = "$graphRoot/identity/conditionalAccess/policies"
 while ($nextLink) {
-  $page = Invoke-RestMethod -Method Get -Uri $nextLink -Headers $headers
+  $page = Invoke-GraphRequest -Method GET -Uri $nextLink
   foreach ($policy in @($page.value)) {
     $policies.Add($policy)
   }
@@ -98,11 +147,38 @@ while ($nextLink) {
 }
 
 $results = foreach ($policy in $policies) {
-  $existing = @($policy.conditions.users.excludeGroups | Where-Object { $_ })
-  $merged = @($existing + $EmergencyAccessGroupObjectId | Sort-Object -Unique)
-  $missing = $EmergencyAccessGroupObjectId -notin $existing
+  $policyUri = "$graphRoot/identity/conditionalAccess/policies/$($policy.id)"
+  try {
+    $freshPolicy = Invoke-GraphRequest -Method GET -Uri $policyUri
+    $includeUsers = @($freshPolicy.conditions.users.includeUsers)
+    $existing = @(
+      $freshPolicy.conditions.users.excludeGroups |
+        Where-Object { $_ } |
+        ForEach-Object { [string]$_ } |
+        Select-Object -Unique
+    )
+    if ('None' -in $includeUsers) {
+      [pscustomobject]@{
+        policyId = $policy.id
+        displayName = $freshPolicy.displayName
+        status = 'NotUserTargeted'
+        previousExcludeGroups = $existing
+        excludeGroups = $existing
+      }
+      continue
+    }
+    if ($EmergencyAccessGroupObjectId -in $existing) {
+      [pscustomobject]@{
+        policyId = $policy.id
+        displayName = $freshPolicy.displayName
+        status = 'AlreadyExcluded'
+        previousExcludeGroups = $existing
+        excludeGroups = $existing
+      }
+      continue
+    }
 
-  if ($missing) {
+    $merged = @($existing + $EmergencyAccessGroupObjectId | Select-Object -Unique)
     $body = @{
       conditions = @{
         users = @{
@@ -110,32 +186,27 @@ $results = foreach ($policy in $policies) {
         }
       }
     } | ConvertTo-Json -Depth 10
-    try {
-      Invoke-RestMethod `
-        -Method Patch `
-        -Uri "$graphRoot/identity/conditionalAccess/policies/$($policy.id)" `
-        -Headers $headers `
-        -Body $body | Out-Null
+    Invoke-GraphRequest -Method PATCH -Uri $policyUri -Body $body | Out-Null
+    $verifiedPolicy = Invoke-GraphRequest -Method GET -Uri $policyUri
+    if ($EmergencyAccessGroupObjectId -notin @($verifiedPolicy.conditions.users.excludeGroups)) {
+      throw "Conditional Access policy '$($policy.id)' did not contain the emergency group after PATCH."
     }
-    catch {
-      [pscustomobject]@{
-        policyId = $policy.id
-        displayName = $policy.displayName
-        status = 'Failed'
-        previousExcludeGroups = $existing
-        excludeGroups = $merged
-        error = $_.Exception.Message
-      }
-      continue
+
+    [pscustomobject]@{
+      policyId = $policy.id
+      displayName = $freshPolicy.displayName
+      status = 'Updated'
+      previousExcludeGroups = $existing
+      excludeGroups = $merged
     }
   }
-
-  [pscustomobject]@{
-    policyId = $policy.id
-    displayName = $policy.displayName
-    status = if ($missing) { 'Updated' } else { 'AlreadyExcluded' }
-    previousExcludeGroups = $existing
-    excludeGroups = $merged
+  catch {
+    [pscustomobject]@{
+      policyId = $policy.id
+      displayName = $policy.displayName
+      status = 'Failed'
+      error = $_.Exception.Message
+    }
   }
 }
 

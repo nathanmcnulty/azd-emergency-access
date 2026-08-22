@@ -29,29 +29,96 @@ $requiredScopes = @(
     'AdministrativeUnit.ReadWrite.All',
     'Policy.ReadWrite.ConditionalAccess'
 )
-if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
-    $requiredScopes += 'Policy.ReadWrite.AuthenticationMethod'
-}
 $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
+if ($env:AZD_OWNED_EMERGENCY_GROUP_ID -and
+    'Policy.Read.AuthenticationMethod' -notin $context.Scopes -and
+    'Policy.ReadWrite.AuthenticationMethod' -notin $context.Scopes) {
+    $missingScopes += 'Policy.Read.AuthenticationMethod (or Policy.ReadWrite.AuthenticationMethod)'
+}
 if ($missingScopes.Count -gt 0) {
     throw "The cached Microsoft Graph context is missing cleanup scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry."
 }
+
+function Invoke-CleanupGraphRequest {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('GET', 'PATCH')]
+        [string] $Method,
+        [Parameter(Mandatory)]
+        [string] $Uri,
+        [string] $Body
+    )
+
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        try {
+            $parameters = @{
+                Method = $Method
+                Uri = $Uri
+            }
+            if ($Body) {
+                $parameters.Body = $Body
+                $parameters.ContentType = 'application/json'
+            }
+            return Invoke-MgGraphRequest @parameters
+        }
+        catch {
+            $responseProperty = $_.Exception.PSObject.Properties['Response']
+            $response = if ($responseProperty) { $responseProperty.Value } else { $null }
+            $statusCode = if ($response -and $response.StatusCode) {
+                [int]$response.StatusCode
+            }
+            elseif ($_.Exception.Message -match 'HTTP\s+(429|503)') {
+                [int]$Matches[1]
+            }
+            else {
+                0
+            }
+            if ($statusCode -notin 429, 503 -or $attempt -eq 4) {
+                throw
+            }
+
+            $delaySeconds = [math]::Pow(2, $attempt - 1)
+            $retryAfter = if ($response -and $response.Headers) { $response.Headers.RetryAfter } else { $null }
+            if ($retryAfter -and $retryAfter.Delta) {
+                $delaySeconds = [math]::Ceiling($retryAfter.Delta.TotalSeconds)
+            }
+            elseif ($retryAfter -and $retryAfter.Date) {
+                $delaySeconds = [math]::Ceiling(($retryAfter.Date - [DateTimeOffset]::UtcNow).TotalSeconds)
+            }
+            Start-Sleep -Seconds ([math]::Max(1, [math]::Min(30, $delaySeconds)))
+        }
+    }
+}
+
 function Remove-ConditionalAccessGroupReferences {
     param(
         [Parameter(Mandatory)][string] $GroupId,
-        [Parameter(Mandatory)][Collections.Generic.List[string]] $ChangedPolicyIds
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[string]] $ChangedPolicyIds
     )
 
     $nextLink = 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies'
     while ($nextLink) {
-        $page = Invoke-MgGraphRequest -Method GET -Uri $nextLink
+        $page = Invoke-CleanupGraphRequest -Method GET -Uri $nextLink
         foreach ($policy in @($page.value)) {
             $excludeGroups = @($policy.conditions.users.excludeGroups) | Where-Object { $_ }
             if ($GroupId -notin $excludeGroups) {
                 continue
             }
 
-            $remainingGroups = @($excludeGroups | Where-Object { $_ -ne $GroupId } | Select-Object -Unique)
+            $policyId = [string]$policy.id
+            $policyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$policyId"
+            $freshPolicy = Invoke-CleanupGraphRequest -Method GET -Uri $policyUri
+            $freshExcludeGroups = @(
+                $freshPolicy.conditions.users.excludeGroups |
+                    Where-Object { $_ } |
+                    ForEach-Object { [string]$_ } |
+                    Select-Object -Unique
+            )
+            if ($GroupId -notin $freshExcludeGroups) {
+                continue
+            }
+
+            $remainingGroups = @($freshExcludeGroups | Where-Object { $_ -ne $GroupId })
             $body = @{
                 conditions = @{
                     users = @{
@@ -59,36 +126,110 @@ function Remove-ConditionalAccessGroupReferences {
                     }
                 }
             } | ConvertTo-Json -Depth 6 -Compress
-            Invoke-MgGraphRequest `
-                -Method PATCH `
-                -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($policy.id)" `
-                -ContentType 'application/json' `
-                -Body $body | Out-Null
-            $ChangedPolicyIds.Add([string]$policy.id)
+            if ($policyId -notin $ChangedPolicyIds) {
+                # Record intent before PATCH so an ambiguous transport failure is also rolled back.
+                $ChangedPolicyIds.Add($policyId)
+            }
+            Invoke-CleanupGraphRequest -Method PATCH -Uri $policyUri -Body $body | Out-Null
+            $verifiedPolicy = Invoke-CleanupGraphRequest -Method GET -Uri $policyUri
+            if ($GroupId -in @($verifiedPolicy.conditions.users.excludeGroups)) {
+                throw "Conditional Access policy '$policyId' still contains the emergency group after cleanup PATCH."
+            }
         }
         $nextLinkProperty = $page.PSObject.Properties['@odata.nextLink']
         $nextLink = if ($nextLinkProperty) { [string]$nextLinkProperty.Value } else { '' }
     }
 }
 
-function Remove-TapGroupReference {
-    param([Parameter(Mandatory)][string] $GroupId)
+function Restore-ConditionalAccessGroupReference {
+    param(
+        [Parameter(Mandatory)][string] $GroupId,
+        [Parameter(Mandatory)][string] $PolicyId
+    )
 
-    if ($env:AZD_ENABLE_TAP_POLICY -ne 'true') {
+    $policyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$PolicyId"
+    $freshPolicy = Invoke-CleanupGraphRequest -Method GET -Uri $policyUri
+    $currentGroups = @(
+        $freshPolicy.conditions.users.excludeGroups |
+            Where-Object { $_ } |
+            ForEach-Object { [string]$_ } |
+            Select-Object -Unique
+    )
+    if ($GroupId -in $currentGroups) {
         return
     }
-    $path = 'https://graph.microsoft.com/beta/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'
-    $configuration = Invoke-MgGraphRequest -Method GET -Uri $path
+    if ('None' -notin @($freshPolicy.conditions.users.includeUsers)) {
+        Invoke-EmergencyAccessRemediation `
+            -EmergencyAccountsGroupObjectId $GroupId `
+            -CAPolicyId $PolicyId `
+            -SkipManagedIdentityConnection | Out-Null
+        return
+    }
+
+    # The shared remediation deliberately skips policies that target no users. Cleanup
+    # still restores their exact prior reference so a failed deletion is fully reversible.
+    $body = @{
+        conditions = @{
+            users = @{
+                excludeGroups = @($currentGroups + $GroupId)
+            }
+        }
+    } | ConvertTo-Json -Depth 6 -Compress
+    Invoke-CleanupGraphRequest -Method PATCH -Uri $policyUri -Body $body | Out-Null
+    $verifiedPolicy = Invoke-CleanupGraphRequest -Method GET -Uri $policyUri
+    if ($GroupId -notin @($verifiedPolicy.conditions.users.excludeGroups)) {
+        throw "Conditional Access policy '$PolicyId' did not contain the emergency group after rollback PATCH."
+    }
+}
+
+function Remove-TapGroupReference {
+    param(
+        [Parameter(Mandatory)][string] $GroupId,
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[object]] $ChangedTargets
+    )
+
+    $path = 'https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'
+    $configuration = Invoke-CleanupGraphRequest -Method GET -Uri $path
+    $removedTarget = @($configuration.includeTargets) | Where-Object { $_.id -eq $GroupId } | Select-Object -First 1
+    if (-not $removedTarget) {
+        return
+    }
+    if ('Policy.ReadWrite.AuthenticationMethod' -notin $context.Scopes) {
+        throw "The owned emergency group is still targeted by the Temporary Access Pass policy, but the cached Microsoft Graph context lacks Policy.ReadWrite.AuthenticationMethod. Refresh the documented normal Connect-MgGraph context, then retry cleanup."
+    }
     $remainingTargets = @($configuration.includeTargets) | Where-Object { $_.id -ne $GroupId }
-    if ($remainingTargets.Count -eq @($configuration.includeTargets).Count) {
-        return
-    }
+    # Record intent before PATCH so an ambiguous transport failure is also rolled back.
+    $ChangedTargets.Add($removedTarget)
     $body = @{
         '@odata.type' = '#microsoft.graph.temporaryAccessPassAuthenticationMethodConfiguration'
         state = $configuration.state
         includeTargets = $remainingTargets
     } | ConvertTo-Json -Depth 8 -Compress
-    Invoke-MgGraphRequest -Method PATCH -Uri $path -ContentType 'application/json' -Body $body | Out-Null
+    Invoke-CleanupGraphRequest -Method PATCH -Uri $path -Body $body | Out-Null
+    $verifiedConfiguration = Invoke-CleanupGraphRequest -Method GET -Uri $path
+    if ($GroupId -in @($verifiedConfiguration.includeTargets.id)) {
+        throw 'The Temporary Access Pass policy still contains the emergency group after cleanup PATCH.'
+    }
+}
+
+function Restore-TapGroupReference {
+    param([Parameter(Mandatory)][object] $Target)
+
+    $path = 'https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'
+    $configuration = Invoke-CleanupGraphRequest -Method GET -Uri $path
+    if ([string]$Target.id -in @($configuration.includeTargets.id)) {
+        return
+    }
+    $body = @{
+        '@odata.type' = '#microsoft.graph.temporaryAccessPassAuthenticationMethodConfiguration'
+        state = $configuration.state
+        includeTargets = @(@($configuration.includeTargets) + $Target)
+    } | ConvertTo-Json -Depth 8 -Compress
+    Invoke-CleanupGraphRequest -Method PATCH -Uri $path -Body $body | Out-Null
+    $verifiedConfiguration = Invoke-CleanupGraphRequest -Method GET -Uri $path
+    if ([string]$Target.id -notin @($verifiedConfiguration.includeTargets.id)) {
+        throw 'The Temporary Access Pass policy did not contain the emergency group after rollback PATCH.'
+    }
 }
 
 $objects = @(
@@ -136,12 +277,15 @@ foreach ($object in $objects) {
     if (Test-OwnedObjectId -CurrentId $object.CurrentId -OwnedId $object.OwnedId) {
         if ($PSCmdlet.ShouldProcess($object.OwnedId, "Delete object recorded by $($object.Ownership)")) {
             $changedConditionalAccessPolicies = [Collections.Generic.List[string]]::new()
+            $changedTapTargets = [Collections.Generic.List[object]]::new()
             try {
                 if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
                     Remove-ConditionalAccessGroupReferences `
                         -GroupId $object.OwnedId `
                         -ChangedPolicyIds $changedConditionalAccessPolicies
-                    Remove-TapGroupReference -GroupId $object.OwnedId
+                    Remove-TapGroupReference `
+                        -GroupId $object.OwnedId `
+                        -ChangedTargets $changedTapTargets
                 }
                 Invoke-MgGraphRequest -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)"
             }
@@ -175,13 +319,20 @@ foreach ($object in $objects) {
                     $restoreErrors = [Collections.Generic.List[string]]::new()
                     foreach ($policyId in $changedConditionalAccessPolicies) {
                         try {
-                            Invoke-EmergencyAccessRemediation `
-                                -EmergencyAccountsGroupObjectId $object.OwnedId `
-                                -CAPolicyId $policyId `
-                                -SkipManagedIdentityConnection | Out-Null
+                            Restore-ConditionalAccessGroupReference `
+                                -GroupId $object.OwnedId `
+                                -PolicyId $policyId
                         }
                         catch {
                             $restoreErrors.Add("$policyId`: $($_.Exception.Message)")
+                        }
+                    }
+                    foreach ($tapTarget in $changedTapTargets) {
+                        try {
+                            Restore-TapGroupReference -Target $tapTarget
+                        }
+                        catch {
+                            $restoreErrors.Add("Temporary Access Pass policy: $($_.Exception.Message)")
                         }
                     }
                     if ($restoreErrors.Count -gt 0) {
@@ -191,13 +342,13 @@ foreach ($object in $objects) {
                         else {
                             ''
                         }
-                        throw "Emergency group cleanup failed and Conditional Access rollback was incomplete. Operation: $($deletionError.Exception.Message)$stateDetail Rollback: $($restoreErrors -join '; ')"
+                        throw "Emergency group cleanup failed and security-policy rollback was incomplete. Operation: $($deletionError.Exception.Message)$stateDetail Rollback: $($restoreErrors -join '; ')"
                     }
                     $stateDetail = if ($groupState -eq 'unknown') {
                         ' Group existence could not be confirmed after four attempts; rollback was attempted for every recorded policy change.'
                     }
                     else {
-                        ' All removed Conditional Access exclusions were restored.'
+                        ' All removed Conditional Access exclusions were restored, along with Temporary Access Pass targets.'
                     }
                     throw "Emergency group cleanup failed.$stateDetail $($deletionError.Exception.Message)"
                 }
@@ -206,6 +357,25 @@ foreach ($object in $objects) {
             if ($LASTEXITCODE -ne 0) { throw "Unable to clear $($object.Ownership)." }
             & azd env set $object.CurrentName '' | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Unable to clear $($object.CurrentName)." }
+            if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
+                foreach ($groupStateName in @(
+                    'AZD_ADOPTED_EMERGENCY_GROUP_ID',
+                    'AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH',
+                    'AZD_EMERGENCY_GROUP_MEMBER_COUNT'
+                )) {
+                    & azd env set $groupStateName '' | Out-Null
+                    if ($LASTEXITCODE -ne 0) { throw "Unable to clear $groupStateName." }
+                }
+            }
+            if ($object.Ownership -match '^AZD_OWNED_EMERGENCY_USER[123]_ID$') {
+                foreach ($onboardingStateName in @(
+                    'AZD_ONBOARDED_EMERGENCY_USER_IDS',
+                    'AZD_SECURITY_KEY_DRILL_FINGERPRINT'
+                )) {
+                    & azd env set $onboardingStateName '' | Out-Null
+                    if ($LASTEXITCODE -ne 0) { throw "Unable to clear $onboardingStateName." }
+                }
+            }
             if ($object.UpnName) {
                 & azd env set $object.UpnName '' | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw "Unable to clear $($object.UpnName)." }
