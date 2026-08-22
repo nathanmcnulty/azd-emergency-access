@@ -268,6 +268,7 @@ if ($guidedSetup) {
         }
         $existingGroupId = Read-Host 'Existing emergency group object ID (leave blank to create one)'
         if ($existingGroupId) {
+            Write-Warning 'Every current and future member of this existing group will receive the Conditional Access exclusion. Setup will enumerate the group and require explicit adoption without removing any member.'
             Set-AzdValue AZD_EMERGENCY_GROUP_ID $existingGroupId.Trim()
         }
         else {
@@ -623,10 +624,11 @@ if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'false') {
     if (-not $env:AZD_EMERGENCY_GROUP_ID) {
         throw 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID.'
     }
-    if (($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true' -or
-        $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') -and
-        (-not $env:AZD_EMERGENCY_USER1_ID -or -not $env:AZD_EMERGENCY_USER2_ID)) {
-        throw 'Alerting with externally managed emergency identities requires AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID.'
+    if (-not $env:AZD_EMERGENCY_USER1_ID -or -not $env:AZD_EMERGENCY_USER2_ID) {
+        throw 'Externally managed emergency identities require AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID for read-only validation.'
+    }
+    if ($env:AZD_EMERGENCY_USER1_ID -eq $env:AZD_EMERGENCY_USER2_ID) {
+        throw 'AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID must identify two distinct emergency accounts.'
     }
     if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
         throw 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false.'
@@ -634,6 +636,19 @@ if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'false') {
     if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
         throw 'The optional limited emergency account is only supported when AZD_MANAGE_EMERGENCY_IDENTITIES=true.'
     }
+}
+
+if ($env:AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH -and
+    $env:AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH -notmatch '^[0-9a-f]{64}$') {
+    throw 'AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH must be the exact SHA-256 membership fingerprint emitted by tenant bootstrap.'
+}
+Assert-GuidValue 'AZD_ADOPTED_EMERGENCY_GROUP_ID' $env:AZD_ADOPTED_EMERGENCY_GROUP_ID
+if ([bool]$env:AZD_ADOPTED_EMERGENCY_GROUP_ID -xor [bool]$env:AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH) {
+    throw 'AZD_ADOPTED_EMERGENCY_GROUP_ID and AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH must be supplied together.'
+}
+if ($env:AZD_SECURITY_KEY_DRILL_FINGERPRINT -and
+    $env:AZD_SECURITY_KEY_DRILL_FINGERPRINT -notmatch '^[0-9a-f]{64}$') {
+    throw 'AZD_SECURITY_KEY_DRILL_FINGERPRINT must be the exact SHA-256 key-set fingerprint emitted by tenant bootstrap.'
 }
 
 if ($env:AZD_SCHEDULE_CRON -notmatch '^\S+(\s+\S+){5}$') {

@@ -17,7 +17,7 @@
   "featured": true,
   "solutionCount": 4,
   "quickstartCommands": [
-    "azd init --template nathanmcnulty/azd-emergency-access",
+    "azd init --template nathanmcnulty/azd-emergency-access --branch v1.0.0",
     "azd up"
   ]
 }

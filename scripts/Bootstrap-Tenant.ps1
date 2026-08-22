@@ -28,6 +28,10 @@ function Connect-ProjectGraph {
             'User.RevokeSessions.All'
         ) | ForEach-Object { $scopes.Add($_) }
     }
+    else {
+        $scopes.Add('User.Read.All')
+        $scopes.Add('Group.Read.All')
+    }
     @(
         'Application.Read.All',
         'AppRoleAssignment.ReadWrite.All',
@@ -41,6 +45,7 @@ function Connect-ProjectGraph {
         $scopes.Add('UserAuthenticationMethod.ReadWrite.All')
     }
     elseif ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
+        $scopes.Add('Policy.Read.AuthenticationMethod')
         $scopes.Add('UserAuthenticationMethod.Read.All')
     }
     $requiredScopes = @($scopes | Select-Object -Unique)
@@ -217,6 +222,122 @@ function Assert-EmergencyUserSuitable {
         throw "Emergency account '$($current.userPrincipalName)' must use the tenant's onmicrosoft.com domain."
     }
     return $current
+}
+
+function Assert-DistinctEmergencyUsers {
+    param([Parameter(Mandatory)][object[]] $Users)
+
+    $duplicates = @($Users | Group-Object id | Where-Object Count -gt 1)
+    if ($duplicates.Count -gt 0) {
+        $duplicateDescriptions = $duplicates | ForEach-Object {
+            $names = @($_.Group.userPrincipalName) -join ', '
+            "object ID '$($_.Name)' ($names)"
+        }
+        throw "Every emergency-account slot must resolve to a distinct user. Duplicate $($duplicateDescriptions -join '; ')."
+    }
+}
+
+function Get-GraphCollection {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $items = [Collections.Generic.List[object]]::new()
+    $nextLink = "$graphRoot/v1.0/$($Path.TrimStart('/'))"
+    while ($nextLink) {
+        try {
+            $page = Invoke-MgGraphRequest -Method GET -Uri $nextLink -ContentType 'application/json'
+        }
+        catch {
+            $status = [int]$_.Exception.Response.StatusCode
+            throw "Microsoft Graph GET $Path failed with HTTP $status. $($_.ErrorDetails.Message)"
+        }
+        foreach ($item in @($page.value)) {
+            $items.Add($item)
+        }
+        $nextLink = $page.'@odata.nextLink'
+    }
+    return @($items)
+}
+
+function Confirm-EmergencyGroupAdoption {
+    param(
+        [Parameter(Mandatory)][object] $Group,
+        [Parameter(Mandatory)][object[]] $Users,
+        [switch] $RequireSelectedMembers,
+        [switch] $IncludeMissingSelectedMembers
+    )
+
+    $members = @(Get-GraphCollection "groups/$($Group.id)/members?`$select=id,displayName,userPrincipalName")
+    $selectedIds = @($Users.id)
+    if ($RequireSelectedMembers) {
+        $missingIds = @($selectedIds | Where-Object { $_ -notin @($members.id) })
+        if ($missingIds.Count -gt 0) {
+            throw "Externally managed emergency group '$($Group.displayName)' does not contain selected emergency user object ID(s): $($missingIds -join ', '). No identity changes were made."
+        }
+    }
+
+    $effectiveMembers = @($members)
+    if ($IncludeMissingSelectedMembers) {
+        foreach ($user in $Users | Where-Object { $_.id -notin @($members.id) }) {
+            $effectiveMembers += [pscustomobject]@{
+                id = $user.id
+                displayName = $user.displayName
+                userPrincipalName = $user.userPrincipalName
+            }
+        }
+    }
+
+    $additionalMembers = @($effectiveMembers | Where-Object { $_.id -notin $selectedIds })
+    Set-AzdValue AZD_EMERGENCY_GROUP_MEMBER_COUNT ([string]$effectiveMembers.Count)
+    if ($additionalMembers.Count -eq 0) {
+        if ($env:AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH) {
+            Clear-AzdValue AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH
+        }
+        if ($env:AZD_ADOPTED_EMERGENCY_GROUP_ID) {
+            Clear-AzdValue AZD_ADOPTED_EMERGENCY_GROUP_ID
+        }
+        return
+    }
+
+    $memberState = @($effectiveMembers.id | Sort-Object) -join ','
+    $memberFingerprint = [Convert]::ToHexString(
+        [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($memberState))
+    ).ToLowerInvariant()
+    Write-Warning "Emergency group '$($Group.displayName)' already contains $($additionalMembers.Count) additional member(s). Every current and future member of this group is excluded from every user-scoped Conditional Access policy. No members will be removed."
+    foreach ($member in $additionalMembers) {
+        $label = if ($member.userPrincipalName) { $member.userPrincipalName } elseif ($member.displayName) { $member.displayName } else { $member.id }
+        Write-Warning "  Additional member: $label [$($member.id)]"
+    }
+    Write-Warning "Exact adoption fingerprint: $memberFingerprint"
+
+    if ($env:AZD_ADOPTED_EMERGENCY_GROUP_ID -eq $Group.id -and
+        $env:AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH -eq $memberFingerprint) {
+        return
+    }
+    if (-not (Test-Interactive)) {
+        throw "Explicit adoption is required before this group can become a Conditional Access exclusion. Review its members, then set AZD_ADOPTED_EMERGENCY_GROUP_ID to '$($Group.id)' and AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH to the exact fingerprint printed by an interactive run."
+    }
+    $confirmation = Read-Host "Type adopt to retain every current member and use this group as the emergency Conditional Access exclusion"
+    if ($confirmation.Trim() -ne 'adopt') {
+        throw 'The existing emergency group was not adopted. No members were removed and Conditional Access reconciliation was not started.'
+    }
+    Set-AzdValue AZD_ADOPTED_EMERGENCY_GROUP_ID $Group.id
+    Set-AzdValue AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH $memberFingerprint
+}
+
+function Resolve-ExternallyManagedEmergencyObjects {
+    $users = @(
+        Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER1_ID)?`$select=id,userPrincipalName,displayName,accountEnabled,userType,onPremisesSyncEnabled"
+        Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER2_ID)?`$select=id,userPrincipalName,displayName,accountEnabled,userType,onPremisesSyncEnabled"
+    )
+    $users = @($users | ForEach-Object { Assert-EmergencyUserSuitable -User $_ })
+    Assert-DistinctEmergencyUsers -Users $users
+
+    $group = Invoke-Graph GET "groups/$($env:AZD_EMERGENCY_GROUP_ID)?`$select=id,displayName,securityEnabled,groupTypes"
+    if ($group.securityEnabled -ne $true -or 'DynamicMembership' -in @($group.groupTypes)) {
+        throw "Externally managed emergency group '$($group.displayName)' must be a static security group."
+    }
+    Confirm-EmergencyGroupAdoption -Group $group -Users $users -RequireSelectedMembers
+    return [pscustomobject]@{ Users = $users; Group = $group }
 }
 
 function Resolve-EmergencyGroup {
@@ -513,6 +634,77 @@ function Ensure-FunctionApiRoleAssignment {
     }
 }
 
+function Test-PasskeyRestrictionAllowsKey {
+    param(
+        [Parameter(Mandatory)][object] $Key,
+        [object] $Restrictions
+    )
+
+    if (-not $Restrictions -or $Restrictions.isEnforced -ne $true) {
+        return $true
+    }
+    $aaGuid = ([string]$Key.aaGuid).Trim('{}').ToLowerInvariant()
+    if (-not $aaGuid) {
+        return $false
+    }
+    $configuredAaGuids = @(
+        $Restrictions.aaGuids |
+            ForEach-Object { ([string]$_).Trim('{}').ToLowerInvariant() }
+    )
+    if ($Restrictions.enforcementType -eq 'allow') {
+        return $aaGuid -in $configuredAaGuids
+    }
+    if ($Restrictions.enforcementType -eq 'block') {
+        return $aaGuid -notin $configuredAaGuids
+    }
+    return $false
+}
+
+function Assert-PasskeyPolicyApplicable {
+    param(
+        [Parameter(Mandatory)][string] $GroupId,
+        [Parameter(Mandatory)][object[]] $Users
+    )
+
+    $policy = Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/Fido2'
+    if ($policy.state -ne 'enabled') {
+        throw 'The tenant passkey (FIDO2) authentication method policy is disabled. Enable it before privileged roles are assigned.'
+    }
+    $target = @($policy.includeTargets | Where-Object id -eq $GroupId | Select-Object -First 1)
+    if ($target.Count -eq 0) {
+        $target = @($policy.includeTargets | Where-Object id -eq 'all_users' | Select-Object -First 1)
+    }
+    if ($target.Count -eq 0) {
+        throw "The passkey (FIDO2) policy does not directly target all users or emergency group '$GroupId'. Target the emergency group explicitly before privileged roles are assigned."
+    }
+
+    $excludeIds = @($policy.excludeTargets.id | Where-Object { $_ })
+    if ('all_users' -in $excludeIds -or $GroupId -in $excludeIds) {
+        throw "The passkey (FIDO2) policy excludes all users or emergency group '$GroupId'. Remove that exclusion before privileged roles are assigned."
+    }
+    foreach ($user in $Users) {
+        if ($user.id -in $excludeIds) {
+            throw "The passkey (FIDO2) policy directly excludes emergency account '$($user.userPrincipalName)'."
+        }
+        if ($excludeIds.Count -eq 0) {
+            continue
+        }
+        $membershipIds = @(
+            Get-GraphCollection "users/$($user.id)/transitiveMemberOf/microsoft.graph.group?`$select=id" |
+                ForEach-Object { [string]$_.id }
+        )
+        $matchingExclusions = @($excludeIds | Where-Object { $_ -in $membershipIds })
+        if ($matchingExclusions.Count -gt 0) {
+            throw "The passkey (FIDO2) policy excludes emergency account '$($user.userPrincipalName)' through group(s): $($matchingExclusions -join ', '). Remove the exclusion before privileged roles are assigned."
+        }
+    }
+
+    return [pscustomobject]@{
+        Policy = $policy
+        Target = $target[0]
+    }
+}
+
 function Invoke-TapOnboarding {
     param([object[]] $Users, [string] $GroupId)
 
@@ -520,10 +712,21 @@ function Invoke-TapOnboarding {
     if (-not $enableTap) {
         return
     }
+    Assert-PasskeyPolicyApplicable -GroupId $GroupId -Users $Users | Out-Null
+    if (-not (Test-Interactive)) {
+        throw 'TAP onboarding requires an interactive terminal because each pass is shown once. Rerun interactively, or disable TAP only after preparing phishing-resistant authentication separately.'
+    }
 
     $createdTaps = [Collections.Generic.List[object]]::new()
     try {
-        $currentTap = Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass' -Beta
+        $currentTap = Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'
+        if ($currentTap.isUsableOnce -eq $true) {
+            throw 'The tenant TAP policy permits only one-time passes. Reusable onboarding was requested, so an Authentication Policy Administrator must explicitly allow multi-use TAPs before rerunning.'
+        }
+        if (($null -ne $currentTap.minimumLifetimeInMinutes -and $currentTap.minimumLifetimeInMinutes -gt 60) -or
+            ($null -ne $currentTap.maximumLifetimeInMinutes -and $currentTap.maximumLifetimeInMinutes -lt 60)) {
+            throw "The tenant TAP policy does not permit a 60-minute lifetime (minimum $($currentTap.minimumLifetimeInMinutes), maximum $($currentTap.maximumLifetimeInMinutes)). Adjust the policy deliberately, then rerun."
+        }
         $target = [pscustomobject]@{
             targetType = 'group'
             id = $GroupId
@@ -537,10 +740,10 @@ function Invoke-TapOnboarding {
             '@odata.type' = '#microsoft.graph.temporaryAccessPassAuthenticationMethodConfiguration'
             state = 'enabled'
             includeTargets = $includeTargets
-        } -Beta | Out-Null
-
-        if (-not (Test-Interactive)) {
-            throw 'TAP onboarding requires an interactive terminal because each pass is shown once. Rerun interactively, or disable TAP only after preparing phishing-resistant authentication separately.'
+        } | Out-Null
+        $verifiedTap = Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'
+        if ($verifiedTap.state -ne 'enabled' -or $GroupId -notin @($verifiedTap.includeTargets.id)) {
+            throw 'The Temporary Access Pass policy did not contain the enabled emergency-group target after PATCH.'
         }
 
         try {
@@ -548,7 +751,7 @@ function Invoke-TapOnboarding {
                 $tap = Invoke-Graph POST "users/$($user.id)/authentication/temporaryAccessPassMethods" @{
                     lifetimeInMinutes = 60
                     isUsableOnce = $false
-                } -Beta
+                }
                 $createdTaps.Add([pscustomobject]@{
                     UserId = $user.id
                     UserPrincipalName = $user.userPrincipalName
@@ -560,7 +763,7 @@ function Invoke-TapOnboarding {
             Write-Host 'Register two physical FIDO2 security keys for every emergency account now.'
             Write-Host 'Open https://mysignins.microsoft.com/security-info in a private browser session for each account.'
             Read-Host 'After passkey registration is complete for every account, press Enter to verify' | Out-Null
-            Assert-EmergencySecurityKeys -Users $Users
+            $keyFingerprint = Assert-EmergencySecurityKeys -Users $Users -GroupId $GroupId
         }
         finally {
             $cleanupErrors = [Collections.Generic.List[string]]::new()
@@ -577,6 +780,7 @@ function Invoke-TapOnboarding {
                 throw "One or more onboarding TAPs could not be removed: $($cleanupErrors -join '; ')"
             }
         }
+        return $keyFingerprint
     }
     catch {
         throw "TAP and passkey onboarding did not complete, so privileged roles were not assigned. $($_.Exception.Message)"
@@ -584,16 +788,76 @@ function Invoke-TapOnboarding {
 }
 
 function Assert-EmergencySecurityKeys {
-    param([Parameter(Mandatory)][object[]] $Users)
+    param(
+        [Parameter(Mandatory)][object[]] $Users,
+        [Parameter(Mandatory)][string] $GroupId
+    )
+
+    $applicability = Assert-PasskeyPolicyApplicable -GroupId $GroupId -Users $Users
+    $policy = $applicability.Policy
+    $profileIds = @($applicability.Target.allowedPasskeyProfiles | Where-Object { $_ })
+    if ($profileIds.Count -eq 0 -and $policy.defaultPasskeyProfile) {
+        $profileIds = @([string]$policy.defaultPasskeyProfile)
+    }
+    $availableProfiles = @($policy.passkeyProfiles | Where-Object { $_ })
+    $profiles = @($availableProfiles | Where-Object { $_.id -in $profileIds })
+    if ($availableProfiles.Count -gt 0 -and $profileIds.Count -eq 0) {
+        throw 'The applicable passkey-policy target does not expose an allowed passkey profile. Assign an explicit device-bound profile before privileged roles are assigned.'
+    }
+    if ($profileIds.Count -gt 0 -and $profiles.Count -ne @($profileIds | Select-Object -Unique).Count) {
+        throw 'The applicable passkey-policy target references a profile that was not returned by Microsoft Graph. Resolve the policy inconsistency before privileged roles are assigned.'
+    }
+    $fingerprintEntries = [Collections.Generic.List[string]]::new()
 
     foreach ($user in $Users) {
         $methods = Invoke-Graph GET "users/$($user.id)/authentication/fido2Methods"
         $securityKeys = @($methods.value | Where-Object { $_.passkeyType -eq 'deviceBound' })
-        if ($securityKeys.Count -lt 2) {
-            throw "Emergency account '$($user.userPrincipalName)' has $($securityKeys.Count) device-bound FIDO2 security key(s). Register at least two physical security keys before privileged roles are assigned."
+        $allowedKeys = if ($profiles.Count -gt 0) {
+            @($securityKeys | Where-Object {
+                $key = $_
+                @($profiles | Where-Object {
+                    ([string]$_.passkeyTypes) -match '(^|,)\s*deviceBound\s*(,|$)' -and
+                        (Test-PasskeyRestrictionAllowsKey -Key $key -Restrictions $_.keyRestrictions)
+                }).Count -gt 0
+            })
         }
-        Write-Host "Verified $($securityKeys.Count) device-bound FIDO2 security keys for $($user.userPrincipalName)."
+        else {
+            @($securityKeys | Where-Object {
+                Test-PasskeyRestrictionAllowsKey -Key $_ -Restrictions $policy.keyRestrictions
+            })
+        }
+        if ($allowedKeys.Count -lt 2) {
+            throw "Emergency account '$($user.userPrincipalName)' has $($allowedKeys.Count) device-bound FIDO2 security key(s) allowed by its effective passkey profile. Register and test at least two permitted physical security keys before privileged roles are assigned."
+        }
+        foreach ($key in $allowedKeys) {
+            $fingerprintEntries.Add("$($user.id):$($key.id)")
+        }
+        Write-Host "Verified $($allowedKeys.Count) permitted device-bound FIDO2 security keys for $($user.userPrincipalName)."
     }
+    $fingerprintState = @($fingerprintEntries | Sort-Object) -join ','
+    return [Convert]::ToHexString(
+        [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($fingerprintState))
+    ).ToLowerInvariant()
+}
+
+function Invoke-EmergencySecurityKeyDrill {
+    param([Parameter(Mandatory)][object[]] $Users)
+
+    if (-not (Test-Interactive)) {
+        Write-Warning 'The deployment verified registered device-bound FIDO2 methods but could not perform the required operator sign-in drill in a noninteractive terminal. Complete and document a sign-in with each physical key before treating the deployment as operational.'
+        return $false
+    }
+
+    Write-Host ''
+    Write-Warning 'TAP sessions have been revoked. Test every physical security key now; registration records alone do not prove that a key can sign in.'
+    foreach ($user in $Users) {
+        Write-Host "  Sign in as $($user.userPrincipalName) once with each of its two separately stored security keys."
+    }
+    $confirmation = Read-Host 'Type tested only after every listed security key completed a fresh sign-in'
+    if ($confirmation.Trim() -ne 'tested') {
+        throw 'The security-key sign-in drill was not confirmed, so privileged roles were not assigned.'
+    }
+    return $true
 }
 
 Connect-ProjectGraph
@@ -607,10 +871,16 @@ if ($Phase -in 'All', 'Identities') {
             $users += Resolve-EmergencyUser 3
         }
         $users = @($users | ForEach-Object { Assert-EmergencyUserSuitable -User $_ })
+        Assert-DistinctEmergencyUsers -Users $users
         $group = Resolve-EmergencyGroup -Users $users
+        Confirm-EmergencyGroupAdoption `
+            -Group $group `
+            -Users $users `
+            -IncludeMissingSelectedMembers
         foreach ($user in $users) {
             Add-DirectoryObjectMember "groups/$($group.id)/members" $user.id
         }
+        Confirm-EmergencyGroupAdoption -Group $group -Users $users -RequireSelectedMembers
 
         $administrativeUnit = Resolve-AdministrativeUnit
         if ($administrativeUnit) {
@@ -619,51 +889,70 @@ if ($Phase -in 'All', 'Identities') {
             }
         }
     }
+    else {
+        Resolve-ExternallyManagedEmergencyObjects | Out-Null
+    }
     Resolve-SentinelServicePrincipal
     Ensure-FunctionAuthApplication
 }
 
 if ($Phase -in 'All', 'Workload') {
+    if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
+        $users = @(
+            Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER1_ID)?`$select=id,userPrincipalName,displayName,accountEnabled,userType,onPremisesSyncEnabled"
+            Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER2_ID)?`$select=id,userPrincipalName,displayName,accountEnabled,userType,onPremisesSyncEnabled"
+        )
+        if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
+            $users += Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER3_ID)?`$select=id,userPrincipalName,displayName,accountEnabled,userType,onPremisesSyncEnabled"
+        }
+        $users = @($users | ForEach-Object { Assert-EmergencyUserSuitable -User $_ })
+        Assert-DistinctEmergencyUsers -Users $users
+        $group = Resolve-EmergencyGroup -Users $users
+        Confirm-EmergencyGroupAdoption -Group $group -Users $users -RequireSelectedMembers
+    }
+    else {
+        $externalObjects = Resolve-ExternallyManagedEmergencyObjects
+        $users = @($externalObjects.Users)
+    }
+
     $principalIds = @($env:AZURE_WORKLOAD_PRINCIPAL_IDS -split ',') | Where-Object { $_ }
     if ($principalIds.Count -eq 0) {
         throw 'Infrastructure did not output AZURE_WORKLOAD_PRINCIPAL_IDS.'
     }
-    foreach ($principalId in $principalIds) {
-        Ensure-GraphAppRoles $principalId.Trim()
+    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -and
+        -not $env:AZURE_PLAYBOOK_PRINCIPAL_ID) {
+        throw 'Infrastructure did not output AZURE_PLAYBOOK_PRINCIPAL_ID.'
     }
-    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
-        if (-not $env:AZURE_PLAYBOOK_PRINCIPAL_ID) {
-            throw 'Infrastructure did not output AZURE_PLAYBOOK_PRINCIPAL_ID.'
-        }
-        Ensure-FunctionApiRoleAssignment $env:AZURE_PLAYBOOK_PRINCIPAL_ID
-    }
+
+    $remediation = Invoke-EmergencyAccessRemediation `
+        -EmergencyAccountsGroupObjectId $env:AZD_EMERGENCY_GROUP_ID `
+        -SkipManagedIdentityConnection
+    Write-Host "Conditional Access reconciliation completed: $($remediation.policiesUpdated) updated, $($remediation.policiesAlreadyExcluded) already protected."
 
     if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
-        $users = @(
-            Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER1_ID)?`$select=id,userPrincipalName"
-            Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER2_ID)?`$select=id,userPrincipalName"
-        )
-        if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
-            $users += Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER3_ID)?`$select=id,userPrincipalName"
-        }
-
-        $remediation = Invoke-EmergencyAccessRemediation `
-            -EmergencyAccountsGroupObjectId $env:AZD_EMERGENCY_GROUP_ID `
-            -SkipManagedIdentityConnection
-        Write-Host "Conditional Access reconciliation completed: $($remediation.policiesUpdated) updated, $($remediation.policiesAlreadyExcluded) already protected."
         $currentUserFingerprint = (@($users.id | Sort-Object) -join ',')
+        $keyFingerprint = $null
         if ($env:AZD_ONBOARDED_EMERGENCY_USER_IDS -ne $currentUserFingerprint) {
             if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
-                Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
+                $keyFingerprint = Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
             }
             else {
-                Assert-EmergencySecurityKeys -Users $users
+                $keyFingerprint = Assert-EmergencySecurityKeys -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
             }
             Revoke-EmergencyUserSessions -Users $users
             Set-AzdValue AZD_ONBOARDED_EMERGENCY_USER_IDS $currentUserFingerprint
         }
         else {
-            Assert-EmergencySecurityKeys -Users $users
+            $keyFingerprint = Assert-EmergencySecurityKeys -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
+        }
+        if ($env:AZD_SECURITY_KEY_DRILL_FINGERPRINT -ne $keyFingerprint) {
+            if ($env:AZD_SECURITY_KEY_DRILL_FINGERPRINT) {
+                Clear-AzdValue AZD_SECURITY_KEY_DRILL_FINGERPRINT
+            }
+            if (Invoke-EmergencySecurityKeyDrill -Users $users) {
+                Revoke-EmergencyUserSessions -Users $users
+                Set-AzdValue AZD_SECURITY_KEY_DRILL_FINGERPRINT $keyFingerprint
+            }
         }
 
         foreach ($user in $users | Select-Object -First 2) {
@@ -680,6 +969,13 @@ if ($Phase -in 'All', 'Workload') {
                 -RoleDefinitionId '0526716b-113d-4c15-b2c8-68e3c22b9f80' `
                 -RoleName 'Authentication Policy Administrator'
         }
+    }
+
+    foreach ($principalId in $principalIds) {
+        Ensure-GraphAppRoles $principalId.Trim()
+    }
+    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+        Ensure-FunctionApiRoleAssignment $env:AZURE_PLAYBOOK_PRINCIPAL_ID
     }
 }
 Write-Host "Tenant bootstrap phase '$Phase' completed."

@@ -8,6 +8,101 @@ function Test-Interactive {
     return -not ($env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected)
 }
 
+function Write-PasskeySignInValidationResult {
+    $userIds = @(
+        $env:AZD_EMERGENCY_USER1_ID
+        $env:AZD_EMERGENCY_USER2_ID
+    ) | Where-Object { $_ }
+    if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true' -and
+        $env:AZD_EMERGENCY_USER3_ID) {
+        $userIds += $env:AZD_EMERGENCY_USER3_ID
+    }
+    if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -ne 'true') {
+        Write-Warning 'External identity management is enabled. Validate every physical security key and revoke drill sessions through the organization-owned identity process; this template will not mutate or record those accounts.'
+    }
+    elseif ($env:AZD_SECURITY_KEY_DRILL_FINGERPRINT) {
+        Write-Host 'The interactive security-key drill is recorded for the currently registered emergency-account keys, and its sessions were revoked.'
+    }
+    else {
+        Write-Warning 'Validate every emergency-account security key with an interactive sign-in. Run azd hooks run postprovision interactively afterward so the drill sessions are revoked and completion is recorded.'
+    }
+
+    $workspace = if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
+        [pscustomobject]@{
+            SubscriptionId = $env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID
+            ResourceGroup = $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP
+            Name = $env:AZD_SENTINEL_WORKSPACE_NAME
+        }
+    }
+    elseif ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
+        [pscustomobject]@{
+            SubscriptionId = $env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID
+            ResourceGroup = $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP
+            Name = $env:AZD_SIGNIN_LOG_WORKSPACE_NAME
+        }
+    }
+    else {
+        $null
+    }
+
+    if (-not $workspace) {
+        Write-Warning 'Sign-in alerting is not enabled in this deployment, so setup cannot corroborate the key-validation sign-ins in SigninLogs.'
+        return
+    }
+
+    if ($userIds.Count -eq 0) {
+        Write-Warning 'No emergency-account object IDs were available for the opportunistic SigninLogs check.'
+        return
+    }
+
+    $workspaceId = & az monitor log-analytics workspace show `
+        --subscription $workspace.SubscriptionId `
+        --resource-group $workspace.ResourceGroup `
+        --workspace-name $workspace.Name `
+        --query customerId `
+        --output tsv `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $workspaceId) {
+        Write-Warning "The passkey sign-in reminder still applies, but setup could not resolve Log Analytics workspace '$($workspace.Name)' for an opportunistic SigninLogs check."
+        return
+    }
+
+    $quotedUserIds = @($userIds | ForEach-Object { '"{0}"' -f $_ }) -join ', '
+    $query = @"
+SigninLogs
+| where TimeGenerated >= ago(30m)
+| where UserId in~ ($quotedUserIds)
+| summarize SignInCount=count(), Accounts=dcount(UserId)
+"@
+    $queryJson = & az monitor log-analytics query `
+        --workspace $workspaceId `
+        --analytics-query $query `
+        --timespan PT1H `
+        --output json `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $queryJson) {
+        Write-Warning 'The passkey sign-in reminder still applies, but the opportunistic SigninLogs query could not be completed. This does not prove that the keys or alerts failed.'
+        return
+    }
+
+    try {
+        $rows = @($queryJson | ConvertFrom-Json)
+        $signInCount = if ($rows.Count -gt 0) { [int]$rows[0].SignInCount } else { 0 }
+        $accountCount = if ($rows.Count -gt 0) { [int]$rows[0].Accounts } else { 0 }
+    }
+    catch {
+        Write-Warning 'The passkey sign-in reminder still applies, but the opportunistic SigninLogs response could not be interpreted.'
+        return
+    }
+
+    if ($signInCount -gt 0) {
+        Write-Host "Observed $signInCount recent SigninLogs record(s) for $accountCount emergency account(s). This corroborates log ingestion but does not replace testing every security key or confirming alert delivery."
+    }
+    else {
+        Write-Warning 'No recent emergency-account sign-in was visible in SigninLogs yet. Log ingestion can be delayed; validate every security key directly and confirm the configured alert after records arrive.'
+    }
+}
+
 function Get-ArmAccessToken {
     $token = & az account get-access-token `
         --subscription $env:AZURE_SUBSCRIPTION_ID `
@@ -267,3 +362,5 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true' -and
 if ($LASTEXITCODE -ne 0) {
     throw 'Unable to persist the immutable provisioned deployment mode.'
 }
+
+Write-PasskeySignInValidationResult

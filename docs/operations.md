@@ -32,6 +32,9 @@ git diff --exit-code -- ./infra/main.json
 - **No sign-in email arrives:** confirm the email action group and that the `SigninLogs` record reached the selected workspace.
 - **TAP returns HTTP 403:** grant the required authentication-method consent and rerun `azd up`. The deployment intentionally withholds privileged role assignments until onboarding completes.
 - **Security-key verification fails:** register two physical FIDO2 security keys for every managed emergency account. Synced passkeys and typed confirmations do not satisfy the deployment gate.
+- **Passkey policy verification fails:** enable the passkey (FIDO2) method, target the emergency group directly or target all users, remove direct or group-based exclusions affecting the accounts, and ensure the applicable profile permits both physical keys.
+- **Reusable TAP validation fails:** the template does not override tenant-wide one-time-use or lifetime controls. Have an Authentication Policy Administrator deliberately permit reusable 60-minute TAPs, then rerun.
+- **Existing-group adoption stops:** review every listed member. Type `adopt` interactively, or set `AZD_ADOPTED_EMERGENCY_GROUP_ID` to the exact group and copy the emitted fingerprint into `AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH` for a subsequent noninteractive run. No member is removed automatically.
 
 ## Routine maintenance
 
@@ -57,7 +60,7 @@ Normal Azure cleanup deliberately retains the emergency accounts and group. Only
 ./scripts/Remove-TenantObjects.ps1 -DeleteObjectsCreatedByThisEnvironment
 ```
 
-The script requires confirmation and deletes only objects whose current IDs match the recorded ownership IDs. Before deleting an owned emergency group, it removes that exact ID from Conditional Access exclusions and, when configured, the TAP policy. Supplied or mismatched objects are retained.
+The script requires confirmation and deletes only objects whose current IDs match the recorded ownership IDs. Before deleting an owned emergency group, it removes that exact ID from Conditional Access exclusions and inspects the TAP policy even if the current TAP option was later disabled. Supplied or mismatched objects are retained.
 
 ## Central monitoring and audit retention
 

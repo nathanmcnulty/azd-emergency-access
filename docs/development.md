@@ -39,4 +39,4 @@ Changes to catalog inputs on `main` trigger [the publishing workflow](../.github
 - Never introduce device-code authentication or stored credentials.
 - Do not weaken exact-ownership teardown guards to make cleanup more convenient.
 
-Protect `main` with required pull requests and the `validate` status check. Create releases from protected `main`, sign release tags, and direct production consumers to a versioned tag or immutable commit rather than floating `main`.
+Protect `main` with required pull requests and the `validate` status check. Create releases only from a verified, GitHub-signed commit on protected `main`, enable immutable GitHub releases, and verify the release attestation after publication. Direct production consumers to a protected versioned tag or immutable commit rather than floating `main`.

@@ -16,6 +16,8 @@ The interactive wizard persists its choices in the current azd environment. Adva
 | `AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT` | `false` | Add a third account with Conditional Access Administrator and Authentication Policy Administrator |
 | `AZD_EMERGENCY_USER3_ID`, `AZD_EMERGENCY_USER3_UPN` | none | Optional limited emergency account reference; otherwise it is created from `AZD_EMERGENCY_DOMAIN` |
 | `AZD_EMERGENCY_GROUP_ID` | none | Existing emergency security-group object ID |
+| `AZD_ADOPTED_EMERGENCY_GROUP_ID`, `AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH` | none | Exact group ID and SHA-256 membership fingerprint acknowledging adoption of a supplied group with additional members |
+| `AZD_EMERGENCY_GROUP_MEMBER_COUNT` | resolved | Last observed number of members in the emergency group |
 | `AZD_ADMINISTRATIVE_UNIT_ID` | none | Existing administrative-unit object ID |
 | `AZD_MANAGE_EMERGENCY_IDENTITIES` | `true` | Set `false` to prevent user, group, role, AU, and TAP changes |
 | `AZD_USE_RESTRICTED_AU` | `true` | Create or reuse a restricted management administrative unit |
@@ -72,7 +74,9 @@ azd env set AZD_EMERGENCY_USER2_ID 44444444-4444-4444-4444-444444444444
 azd up
 ```
 
-The user IDs are required when alerting is enabled. The group ID is always required because the remediation workload uses it.
+Both user IDs and the group ID are always required. Tenant bootstrap resolves them read-only, requires two distinct suitable users, verifies their group membership, and performs immediate Conditional Access reconciliation without changing identities or roles.
+
+If the group has additional members, an interactive run lists them and requires `adopt`. Automation must first review the interactive output, set `AZD_ADOPTED_EMERGENCY_GROUP_ID` to the exact group ID, and set `AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH` to the emitted fingerprint. The template never removes existing members. Changing the group or its membership invalidates the acknowledgement and requires a new review.
 
 ## Preview and noninteractive deployment
 
