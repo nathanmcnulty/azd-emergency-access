@@ -66,6 +66,7 @@ param sentinelAccountChangeRuleId string = ''
 param sentinelNotificationAutomationRuleId string = ''
 param emergencyUser1ObjectId string = ''
 param emergencyUser2ObjectId string = ''
+param emergencyUser3ObjectId string = ''
 var effectiveScheduleStartTime = empty(scheduleStartTime)
   ? generatedScheduleStartTime
   : scheduleStartTime
@@ -146,6 +147,7 @@ module signInAlerting 'modules/signin-alerting.bicep' = if (enableSignInAlerts =
     workspaceResourceId: signInLogWorkspace!.id
     emergencyUser1ObjectId: emergencyUser1ObjectId
     emergencyUser2ObjectId: emergencyUser2ObjectId
+    emergencyUser3ObjectId: emergencyUser3ObjectId
     notificationEmail: signInAlertEmail
   }
 }
@@ -162,6 +164,7 @@ module sentinelActivityAlerting 'modules/sentinel-activity-alerting.bicep' = if 
     diagnosticsWorkspaceResourceId: sentinelWorkspace!.id
     emergencyUser1ObjectId: emergencyUser1ObjectId
     emergencyUser2ObjectId: emergencyUser2ObjectId
+    emergencyUser3ObjectId: emergencyUser3ObjectId
     sentinelServicePrincipalId: sentinelServicePrincipalId
     assignAutomationContributor: deploymentMode != 'sentinel-function'
     teamsWebhookUrl: sentinelTeamsWebhookUrl

@@ -6,12 +6,13 @@ param workspaceResourceId string
 param emergencyUser1ObjectId string
 @minLength(1)
 param emergencyUser2ObjectId string
+param emergencyUser3ObjectId string = ''
 param notificationEmail string
 
 var signInQuery = join([
   'SigninLogs'
   '| where ingestion_time() >= ago(5m)'
-  '| where UserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}")'
+  '| where UserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}", "${emergencyUser3ObjectId}")'
   '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'
 ], '\n')
 

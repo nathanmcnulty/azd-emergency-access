@@ -38,6 +38,7 @@
     "sentinelAccountChangeRuleId": { "value": "${AZD_SENTINEL_ACCOUNT_CHANGE_RULE_ID=}" },
     "sentinelNotificationAutomationRuleId": { "value": "${AZD_SENTINEL_NOTIFICATION_AUTOMATION_RULE_ID=}" },
     "emergencyUser1ObjectId": { "value": "${AZD_EMERGENCY_USER1_ID=}" },
-    "emergencyUser2ObjectId": { "value": "${AZD_EMERGENCY_USER2_ID=}" }
+    "emergencyUser2ObjectId": { "value": "${AZD_EMERGENCY_USER2_ID=}" },
+    "emergencyUser3ObjectId": { "value": "${AZD_EMERGENCY_USER3_ID=}" }
   }
 }

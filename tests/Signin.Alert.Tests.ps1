@@ -11,10 +11,12 @@ Describe 'Optional emergency sign-in alerting' {
         $main | Should -Match "module signInAlerting .* = if \(enableSignInAlerts == 'true'\)"
         $parameters | Should -Match 'AZD_EMERGENCY_USER1_ID='
         $parameters | Should -Match 'AZD_EMERGENCY_USER2_ID='
+        $parameters | Should -Match 'AZD_EMERGENCY_USER3_ID='
         $parameters | Should -Match 'AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID='
         $main | Should -Match 'scope: resourceGroup\(signInLogWorkspaceSubscriptionId, signInLogWorkspaceResourceGroup\)'
         $alerting | Should -Match '@minLength\(1\)\s*param emergencyUser1ObjectId string'
         $alerting | Should -Match '@minLength\(1\)\s*param emergencyUser2ObjectId string'
+        $alerting | Should -Match "param emergencyUser3ObjectId string = ''"
     }
 
     It 'alerts on every successful or failed sign-in record for the emergency users' {

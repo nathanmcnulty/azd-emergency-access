@@ -17,6 +17,7 @@ Describe 'Lifecycle security wiring' {
         $tenantGuards = Get-Content "$PSScriptRoot\..\scripts\Tenant.Guards.psm1" -Raw
         $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
         $sentinelBicep = Get-Content "$PSScriptRoot\..\infra\modes\sentinel-function.bicep" -Raw
+        $remediation = Get-Content "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Raw
     }
 
     It 'reconciles a v2 API audience role and service principal' {
@@ -40,6 +41,7 @@ Describe 'Lifecycle security wiring' {
         $parameters | Should -Match 'AZD_EMERGENCY_GROUP_ID='
         $parameters | Should -Match 'AZD_EMERGENCY_USER1_ID='
         $parameters | Should -Match 'AZD_EMERGENCY_USER2_ID='
+        $parameters | Should -Match 'AZD_EMERGENCY_USER3_ID='
         $validate | Should -Match 'az group exists'
         $validate | Should -Match 'Set-AzdDefault AZURE_TENANT_ID \$subscriptionTenantId'
         $mainBicep | Should -Match "param emergencyAccessGroupObjectId string = ''"
@@ -63,17 +65,43 @@ Describe 'Lifecycle security wiring' {
         $validate | Should -Match 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID'
         $validate | Should -Match 'Alerting with externally managed emergency identities requires AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID'
         $validate | Should -Match 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false'
-        $identityGuard = $bootstrap.IndexOf("if (`$env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true')")
+        $identityPhase = $bootstrap.IndexOf("if (`$Phase -in 'All', 'Identities')")
+        $identityGuard = $bootstrap.IndexOf("if (`$env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true')", $identityPhase)
+        $workloadGuard = $bootstrap.LastIndexOf("if (`$env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true')")
         $resolveUser = $bootstrap.LastIndexOf('Resolve-EmergencyUser 1')
-        $globalAdmin = $bootstrap.LastIndexOf('Ensure-GlobalAdministrator $user.id')
+        $globalAdmin = $bootstrap.LastIndexOf("-RoleName 'Global Administrator'")
         $identityGuard | Should -BeGreaterOrEqual 0
         $resolveUser | Should -BeGreaterThan $identityGuard
-        $globalAdmin | Should -BeGreaterThan $resolveUser
+        $workloadGuard | Should -BeGreaterThan $resolveUser
+        $globalAdmin | Should -BeGreaterThan $workloadGuard
         $bootstrap | Should -Match "\}[\r\n ]+Resolve-SentinelServicePrincipal[\r\n ]+Ensure-FunctionAuthApplication"
         $tapGuard = $bootstrap.LastIndexOf("if (`$env:AZD_ENABLE_TAP_POLICY -eq 'true')")
         $tapInvocation = $bootstrap.LastIndexOf('Invoke-TapOnboarding -Users $users')
-        $tapGuard | Should -BeGreaterThan $identityGuard
+        $tapGuard | Should -BeGreaterThan $workloadGuard
         $tapInvocation | Should -BeGreaterThan $tapGuard
+    }
+
+    It 'hardens managed accounts before assigning permanent roles' {
+        $ca = $bootstrap.LastIndexOf('Invoke-EmergencyAccessRemediation')
+        $revoke = $bootstrap.LastIndexOf('Revoke-EmergencyUserSessions -Users')
+        $roles = $bootstrap.LastIndexOf("-RoleName 'Global Administrator'")
+        $ca | Should -BeGreaterOrEqual 0
+        $revoke | Should -BeGreaterThan $ca
+        $roles | Should -BeGreaterThan $revoke
+        $bootstrap | Should -Match 'User\.RevokeSessions\.All'
+        $bootstrap | Should -Match 'authentication/fido2Methods'
+        $bootstrap | Should -Match 'authentication/temporaryAccessPassMethods/\$\(\$createdTap\.MethodId\)'
+        $bootstrap | Should -Match 'One or more onboarding TAPs could not be removed'
+        $bootstrap | Should -Match 'AZD_ONBOARDED_EMERGENCY_USER_IDS'
+        $remediation | Should -Match ([regex]::Escape("'None' -in `$includeUsers"))
+    }
+
+    It 'supports a supplemental lower-privilege emergency account' {
+        $validate | Should -Match "Set-AzdDefault AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'"
+        $bootstrap | Should -Match 'Resolve-EmergencyUser 3'
+        $bootstrap | Should -Match 'b1be1c3e-b65d-4f19-8427-f6fa0d97feb9'
+        $bootstrap | Should -Match '0526716b-113d-4c15-b2c8-68e3c22b9f80'
+        $bootstrap | Should -Match "-RoleName 'Authentication Policy Administrator'"
     }
 
     It 'cleans owned Sentinel rules even after a deployment mode change' {
@@ -158,6 +186,7 @@ Describe 'Lifecycle security wiring' {
         $cleanup | Should -Match 'excludeGroups = \$remainingGroups'
         $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-MgGraphRequest -Method DELETE'
         $cleanup | Should -Match 'Connect-MgGraph'
+        $cleanup | Should -Match 'AZD_OWNED_EMERGENCY_USER3_ID'
         $cleanup | Should -Match 'Connect-MgGraph -NoWelcome'
         $cleanup | Should -Not -Match 'Connect-MgGraph[\s\S]{0,150}-Scopes'
         $cleanup | Should -Not -Match 'az account get-access-token'

@@ -1,14 +1,15 @@
 # Emergency access protection for Microsoft Entra
 
-Deploy and protect two Microsoft Entra emergency access accounts with a guided Azure Developer CLI experience.
+Deploy and protect Microsoft Entra emergency access accounts with a guided Azure Developer CLI experience.
 
 This template helps an administrator:
 
 1. Create or reuse two cloud-only emergency accounts.
-2. Place them in a dedicated group and assign Global Administrator when requested.
-3. Keep that group excluded from every Conditional Access policy.
+2. Optionally add a third, lower-privilege recovery account.
+3. Place them in a dedicated group and keep it excluded from every Conditional Access policy.
 4. Alert by email, Microsoft Sentinel, and Microsoft Teams when the accounts are used.
 5. Onboard phishing-resistant passkeys with Temporary Access Pass (TAP).
+6. Revoke onboarding sessions before assigning permanent administrator roles.
 
 > Emergency access accounts are a last-resort control. Follow [Microsoft's emergency access guidance](https://learn.microsoft.com/entra/identity/role-based-access-control/security-emergency-access), protect the credentials and devices, and test the complete recovery process regularly.
 
@@ -52,6 +53,7 @@ The first `azd up` walks through:
 
 - the remediation service, with a scheduled Azure Function recommended for most organizations;
 - creating, reusing, or externally managing the emergency identities;
+- an optional limited recovery account for Conditional Access and authentication-policy lockouts;
 - optional TAP and passkey onboarding;
 - Azure Monitor email, Sentinel and Teams, both notification paths, or later configuration;
 - normal Azure and Microsoft Graph browser consent.
@@ -60,7 +62,7 @@ The choices are saved in the azd environment, so rerunning `azd up` is non-destr
 
 ### Finish account onboarding
 
-If TAP onboarding was selected, each TAP is displayed exactly once. Before closing the terminal:
+If TAP onboarding was selected, each TAP is displayed exactly once. The deployment pauses while the custodians register passkeys, verifies that each account has a passkey, deletes the temporary passes, revokes the onboarding sessions, and only then assigns roles. Before closing the terminal:
 
 1. Securely give each TAP to its intended custodian.
 2. Sign in as each emergency account and register at least two passkeys.
@@ -75,7 +77,7 @@ Do not consider the deployment complete until both accounts and the notification
 ```mermaid
 flowchart LR
   Admin[Administrator] --> Wizard[azd guided setup]
-  Wizard --> Identities[Two emergency accounts and group]
+  Wizard --> Identities[Two GA accounts plus optional limited account]
   Wizard --> Remediator[Conditional Access remediator]
   Remediator --> Policies[All Conditional Access policies]
   Signins[SigninLogs and AuditLogs] --> Alerts[Azure Monitor or Sentinel]
@@ -120,6 +122,6 @@ Emergency tenant identities are intentionally retained. If this environment crea
 
 ## Security
 
-Permanent Global Administrator and Conditional Access exclusions are intentionally powerful. Use exactly two purpose-built cloud-only accounts, phishing-resistant authentication, independent monitoring, protected recovery devices, and regular drills. Review the [security model](docs/identity-and-authentication.md#security-boundaries) and report vulnerabilities through [SECURITY.md](SECURITY.md).
+Permanent administrator roles and Conditional Access exclusions are intentionally powerful. Maintain at least two purpose-built cloud-only Global Administrator accounts, phishing-resistant authentication, independent monitoring, protected recovery devices, and regular drills. The optional limited account supplements those two; it does not replace either one. Review the [security model](docs/identity-and-authentication.md#security-boundaries) and report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 Released into the public domain under the [Unlicense](LICENSE).

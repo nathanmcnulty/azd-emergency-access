@@ -179,7 +179,9 @@ Set-AzdDefault AZD_SCHEDULE_FREQUENCY 'Hour'
 Set-AzdDefault AZD_AUTOMATION_TIME_ZONE 'Etc/UTC'
 Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
 Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
+Set-AzdDefault AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
+Set-AzdDefault AZD_AUTHENTICATION_READY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
 Set-AzdDefault AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS 'false'
 Set-AzdDefault AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY 'false'
@@ -201,7 +203,7 @@ if ($guidedSetup) {
 
     if ($identitySelection -eq 1) {
         Set-AzdValue AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
-        foreach ($name in 'AZD_EMERGENCY_USER1_ID', 'AZD_EMERGENCY_USER1_UPN', 'AZD_EMERGENCY_USER2_ID', 'AZD_EMERGENCY_USER2_UPN', 'AZD_EMERGENCY_GROUP_ID') {
+        foreach ($name in 'AZD_EMERGENCY_USER1_ID', 'AZD_EMERGENCY_USER1_UPN', 'AZD_EMERGENCY_USER2_ID', 'AZD_EMERGENCY_USER2_UPN', 'AZD_EMERGENCY_USER3_ID', 'AZD_EMERGENCY_USER3_UPN', 'AZD_EMERGENCY_GROUP_ID') {
             Clear-AzdValue $name
         }
         $domain = Read-RequiredInput 'Verified Entra domain for the new accounts (for example, contoso.onmicrosoft.com)'
@@ -244,12 +246,38 @@ if ($guidedSetup) {
 
     if ($identitySelection -ne 3) {
         Write-Host ''
+        $limitedSelection = Read-MenuSelection 'Limited recovery account' @(
+            'Do not add a third account (recommended for the standard Microsoft design)',
+            'Add a third account for Conditional Access and authentication-policy recovery'
+        )
+        Set-AzdValue AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT $(if ($limitedSelection -eq 2) { 'true' } else { 'false' })
+        if ($limitedSelection -eq 2 -and $identitySelection -eq 2) {
+            $reference = Read-RequiredInput 'Limited emergency account UPN or object ID'
+            $parsedId = [guid]::Empty
+            if ([guid]::TryParse($reference, [ref]$parsedId)) {
+                Clear-AzdValue AZD_EMERGENCY_USER3_UPN
+                Set-AzdValue AZD_EMERGENCY_USER3_ID $reference
+            }
+            else {
+                Clear-AzdValue AZD_EMERGENCY_USER3_ID
+                Set-AzdValue AZD_EMERGENCY_USER3_UPN $reference
+            }
+        }
+        elseif ($limitedSelection -eq 1) {
+            Clear-AzdValue AZD_EMERGENCY_USER3_ID
+            Clear-AzdValue AZD_EMERGENCY_USER3_UPN
+        }
+
+        Write-Host ''
         Write-Host 'Temporary Access Pass (TAP) provides the one-time credential needed to register passkeys.'
         $tapSelection = Read-MenuSelection 'TAP onboarding' @(
             'Enable TAP onboarding and show each pass once (recommended)',
             'Skip TAP changes and configure authentication methods separately'
         )
         Set-AzdValue AZD_ENABLE_TAP_POLICY $(if ($tapSelection -eq 1) { 'true' } else { 'false' })
+    }
+    else {
+        Set-AzdValue AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'
     }
 
     Write-Host ''
@@ -285,6 +313,7 @@ if ($guidedSetup) {
     Write-Host 'Setup choices are saved in the current azd environment.'
     Write-Host "  Remediation: $($env:AZD_DEPLOYMENT_MODE)"
     Write-Host "  Identity management: $($env:AZD_MANAGE_EMERGENCY_IDENTITIES)"
+    Write-Host "  Limited recovery account: $($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT)"
     Write-Host "  TAP onboarding: $($env:AZD_ENABLE_TAP_POLICY)"
     Write-Host "  Azure Monitor email: $($env:AZD_ENABLE_SIGNIN_ALERTS)"
     Write-Host "  Sentinel and Teams: $($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS)"
@@ -329,7 +358,7 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
+foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT', 'AZD_ENABLE_TAP_POLICY', 'AZD_AUTHENTICATION_READY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
@@ -523,6 +552,7 @@ if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
 foreach ($guidName in @(
     'AZD_EMERGENCY_USER1_ID',
     'AZD_EMERGENCY_USER2_ID',
+    'AZD_EMERGENCY_USER3_ID',
     'AZD_EMERGENCY_GROUP_ID',
     'AZD_ADMINISTRATIVE_UNIT_ID'
 )) {
@@ -540,6 +570,9 @@ if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'false') {
     }
     if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
         throw 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false.'
+    }
+    if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
+        throw 'The optional limited emergency account is only supported when AZD_MANAGE_EMERGENCY_IDENTITIES=true.'
     }
 }
 
@@ -592,6 +625,13 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
 
 $user1Missing = -not $env:AZD_EMERGENCY_USER1_ID -and -not $env:AZD_EMERGENCY_USER1_UPN
 $user2Missing = -not $env:AZD_EMERGENCY_USER2_ID -and -not $env:AZD_EMERGENCY_USER2_UPN
+$user3Missing = -not $env:AZD_EMERGENCY_USER3_ID -and -not $env:AZD_EMERGENCY_USER3_UPN
+if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true' -and $user3Missing -and -not $env:AZD_EMERGENCY_DOMAIN) {
+    throw 'The limited emergency account requires AZD_EMERGENCY_USER3_ID, AZD_EMERGENCY_USER3_UPN, or AZD_EMERGENCY_DOMAIN.'
+}
+if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and ($user1Missing -or $user2Missing) -and $env:AZD_ENABLE_TAP_POLICY -ne 'true') {
+    throw 'Creating emergency accounts requires AZD_ENABLE_TAP_POLICY=true so usable phishing-resistant authentication is registered before roles are assigned.'
+}
 if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and
     ($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
     throw 'Set AZD_EMERGENCY_DOMAIN when either emergency user needs to be created.'

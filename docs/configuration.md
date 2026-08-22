@@ -13,11 +13,14 @@ The interactive wizard persists its choices in the current azd environment. Adva
 | `AZD_EMERGENCY_DOMAIN` | none | Verified domain used when creating users |
 | `AZD_EMERGENCY_USER1_ID`, `AZD_EMERGENCY_USER2_ID` | none | Existing user object IDs |
 | `AZD_EMERGENCY_USER1_UPN`, `AZD_EMERGENCY_USER2_UPN` | none | Existing user principal names to resolve |
+| `AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT` | `false` | Add a third account with Conditional Access Administrator and Authentication Policy Administrator |
+| `AZD_EMERGENCY_USER3_ID`, `AZD_EMERGENCY_USER3_UPN` | none | Optional limited emergency account reference; otherwise it is created from `AZD_EMERGENCY_DOMAIN` |
 | `AZD_EMERGENCY_GROUP_ID` | none | Existing emergency security-group object ID |
 | `AZD_ADMINISTRATIVE_UNIT_ID` | none | Existing administrative-unit object ID |
 | `AZD_MANAGE_EMERGENCY_IDENTITIES` | `true` | Set `false` to prevent user, group, role, AU, and TAP changes |
 | `AZD_USE_RESTRICTED_AU` | `true` | Create or reuse a restricted management administrative unit |
 | `AZD_ENABLE_TAP_POLICY` | `false` outside the wizard | Configure TAP and create interactive passes |
+| `AZD_AUTHENTICATION_READY` | `false` | Explicit noninteractive confirmation when TAP is skipped for existing managed accounts |
 | `AZD_RESOURCE_NAME_PREFIX` | environment-derived | Optional deterministic Azure resource prefix |
 
 ## Scheduling

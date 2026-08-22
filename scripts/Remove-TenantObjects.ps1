@@ -93,6 +93,14 @@ $objects = @(
         CurrentId = $env:AZD_EMERGENCY_USER2_ID
         OwnedId = $env:AZD_OWNED_EMERGENCY_USER2_ID
         Uri = 'https://graph.microsoft.com/v1.0/users'
+    },
+    @{
+        Ownership = 'AZD_OWNED_EMERGENCY_USER3_ID'
+        CurrentName = 'AZD_EMERGENCY_USER3_ID'
+        UpnName = 'AZD_EMERGENCY_USER3_UPN'
+        CurrentId = $env:AZD_EMERGENCY_USER3_ID
+        OwnedId = $env:AZD_OWNED_EMERGENCY_USER3_ID
+        Uri = 'https://graph.microsoft.com/v1.0/users'
     }
 )
 
