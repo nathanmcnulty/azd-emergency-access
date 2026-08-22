@@ -104,6 +104,7 @@ The guided Teams option asks for a copied Teams channel link, creates the connec
 | [Configuration reference](docs/configuration.md) | Environment variables, existing identities, and automation |
 | [Operations](docs/operations.md) | Verification, troubleshooting, maintenance, and cleanup |
 | [Development and publishing](docs/development.md) | Repository validation, generated templates, and catalog updates |
+| [Future administrator experience](FUTURE.md) | Deferred workspace discovery, central health monitoring, and drill orchestration |
 
 ## Cleanup
 
