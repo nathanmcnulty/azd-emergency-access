@@ -25,7 +25,7 @@ git diff --exit-code -- ./infra/main.json
 - **A prerequisite command is missing:** install the tool named by the error and rerun `azd up`; the deployment is idempotent.
 - **Microsoft Graph returns HTTP 403:** confirm the tenant, activated Entra role, and delegated consent. Azure Owner does not grant Graph privileges.
 - **The cached Graph context lacks scopes:** run the one standard `Connect-MgGraph` initialization described by the error. Do not use device-code authentication.
-- **Function deployment is skipped:** install Azure Functions Core Tools v4 and run `azd deploy` or `azd up` again.
+- **Function deployment fails:** confirm Azure CLI can access the Function App and rerun `azd deploy` or `azd up`. The template builds a ready-to-run ZIP locally and uploads it with Azure CLI.
 - **Function returns 401 or 403:** confirm Easy Auth, its application audience, and the allowed playbook principal.
 - **Sentinel automation does not run:** confirm `AuditLogs` ingestion, NRT rule health, Automation Contributor on the playbook resource group, and the automation-rule condition.
 - **No Teams message arrives:** reauthorize the connection owner, verify team/channel membership, and inspect the failed Logic App action without printing secrets.

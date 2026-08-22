@@ -130,10 +130,6 @@ if (-not $env:AZD_DEPLOYMENT_MODE) {
 if ($env:AZD_DEPLOYMENT_MODE -notin $allowedModes) {
     throw "Unsupported AZD_DEPLOYMENT_MODE '$($env:AZD_DEPLOYMENT_MODE)'. Allowed values: $($allowedModes -join ', ')."
 }
-if ($env:AZD_DEPLOYMENT_MODE -in 'function-scheduled', 'sentinel-function' -and
-    -not (Get-Command func -ErrorAction SilentlyContinue)) {
-    throw "Azure Functions Core Tools v4 is required for '$($env:AZD_DEPLOYMENT_MODE)'. Install it, then run 'azd up' again."
-}
 if ($env:AZD_PROVISIONED_MODE -and $env:AZD_PROVISIONED_MODE -ne $env:AZD_DEPLOYMENT_MODE) {
     throw "This azd environment is locked to provisioned mode '$($env:AZD_PROVISIONED_MODE)'. Run 'azd down' before changing AZD_DEPLOYMENT_MODE, or use a new azd environment."
 }

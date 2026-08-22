@@ -22,7 +22,6 @@ Install:
 - [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
 - PowerShell 7.4 or later
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) for the recommended Function mode
 - Microsoft Graph authentication for PowerShell:
 
 ```powershell

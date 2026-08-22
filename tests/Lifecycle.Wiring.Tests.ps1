@@ -6,6 +6,7 @@ Describe 'Lifecycle security wiring' {
         $preProvision = Get-Content "$PSScriptRoot\..\scripts\Pre-Provision.ps1" -Raw
         $validate = Get-Content "$PSScriptRoot\..\scripts\Validate-Environment.ps1" -Raw
         $testDeployment = Get-Content "$PSScriptRoot\..\scripts\Test-Deployment.ps1" -Raw
+        $deployFunction = Get-Content "$PSScriptRoot\..\scripts\Deploy-Function.ps1" -Raw
         $parameters = Get-Content "$PSScriptRoot\..\infra\main.parameters.json" -Raw
         $mainBicep = Get-Content "$PSScriptRoot\..\infra\main.bicep" -Raw
         $modeBicep = @(
@@ -56,7 +57,10 @@ Describe 'Lifecycle security wiring' {
         $validate | Should -Match 'Choose how emergency identities will be prepared'
         $validate | Should -Match 'Temporary Access Pass \(TAP\) provides the one-time credential'
         $validate | Should -Match 'Choose emergency-account use notifications'
-        $validate | Should -Match 'Azure Functions Core Tools v4 is required'
+        $deployFunction | Should -Match 'ZipFile\]::CreateFromDirectory'
+        $deployFunction | Should -Match 'az functionapp deployment source config-zip'
+        $deployFunction | Should -Not -Match 'func azure functionapp publish'
+        $validate | Should -Not -Match 'Functions Core Tools'
         $validate | Should -Match "Set-AzdValue AZD_GUIDED_SETUP_ACTIVE 'false'"
     }
 
