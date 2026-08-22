@@ -15,11 +15,15 @@ function Test-Interactive {
 
 function Connect-ProjectGraph {
     $scopes = [Collections.Generic.List[string]]::new()
+    if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
+        @(
+            'User.ReadWrite.All',
+            'Group.ReadWrite.All',
+            'AdministrativeUnit.ReadWrite.All',
+            'RoleManagement.ReadWrite.Directory'
+        ) | ForEach-Object { $scopes.Add($_) }
+    }
     @(
-        'User.ReadWrite.All',
-        'Group.ReadWrite.All',
-        'AdministrativeUnit.ReadWrite.All',
-        'RoleManagement.ReadWrite.Directory',
         'Application.Read.All',
         'AppRoleAssignment.ReadWrite.All',
         'Policy.ReadWrite.ConditionalAccess'
@@ -505,20 +509,22 @@ function Invoke-TapOnboarding {
 
 Connect-ProjectGraph
 if ($Phase -in 'All', 'Identities') {
-    $users = @(
-        Resolve-EmergencyUser 1
-        Resolve-EmergencyUser 2
-    )
-    $group = Resolve-EmergencyGroup -Users $users
-    foreach ($user in $users) {
-        Add-DirectoryObjectMember "groups/$($group.id)/members" $user.id
-        Ensure-GlobalAdministrator $user.id
-    }
+    if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
+        $users = @(
+            Resolve-EmergencyUser 1
+            Resolve-EmergencyUser 2
+        )
+        $group = Resolve-EmergencyGroup -Users $users
+        foreach ($user in $users) {
+            Add-DirectoryObjectMember "groups/$($group.id)/members" $user.id
+            Ensure-GlobalAdministrator $user.id
+        }
 
-    $administrativeUnit = Resolve-AdministrativeUnit
-    if ($administrativeUnit) {
-        foreach ($object in @($users) + @($group)) {
-            Add-DirectoryObjectMember "directory/administrativeUnits/$($administrativeUnit.id)/members" $object.id
+        $administrativeUnit = Resolve-AdministrativeUnit
+        if ($administrativeUnit) {
+            foreach ($object in @($users) + @($group)) {
+                Add-DirectoryObjectMember "directory/administrativeUnits/$($administrativeUnit.id)/members" $object.id
+            }
         }
     }
     Resolve-SentinelServicePrincipal
@@ -540,10 +546,12 @@ if ($Phase -in 'All', 'Workload') {
         Ensure-FunctionApiRoleAssignment $env:AZURE_PLAYBOOK_PRINCIPAL_ID
     }
 
-    $users = @(
-        Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER1_ID)?`$select=id,userPrincipalName"
-        Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER2_ID)?`$select=id,userPrincipalName"
-    )
-    Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
+    if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+        $users = @(
+            Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER1_ID)?`$select=id,userPrincipalName"
+            Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER2_ID)?`$select=id,userPrincipalName"
+        )
+        Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
+    }
 }
 Write-Host "Tenant bootstrap phase '$Phase' completed."

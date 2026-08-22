@@ -4,6 +4,7 @@ Describe 'Optional Sentinel emergency activity alerting' {
         $compiledMain = Get-Content "$PSScriptRoot\..\infra\main.json" -Raw | ConvertFrom-Json
         $parameters = Get-Content "$PSScriptRoot\..\infra\main.parameters.json" -Raw
         $alerting = Get-Content "$PSScriptRoot\..\infra\modules\sentinel-activity-alerting.bicep" -Raw
+        $sentinelMode = Get-Content "$PSScriptRoot\..\infra\modes\sentinel-function.bicep" -Raw
         $rules = Get-Content "$PSScriptRoot\..\infra\modules\sentinel-activity-rules.bicep" -Raw
         $validate = Get-Content "$PSScriptRoot\..\scripts\Validate-Environment.ps1" -Raw
         $preProvision = Get-Content "$PSScriptRoot\..\scripts\Pre-Provision.ps1" -Raw
@@ -94,5 +95,15 @@ Describe 'Optional Sentinel emergency activity alerting' {
         $preDown | Should -Match 'AZD_OWNED_SENTINEL_ACTIVITY_READER_ROLE_ASSIGNMENT_ID'
         $preDown | Should -Match 'Test-OwnedSentinelResourceId'
         $preDown | Should -Match 'Test-OwnedWorkspaceRoleAssignmentId'
+    }
+
+    It 'supports a Sentinel workspace in another subscription in the same tenant' {
+        $parameters | Should -Match 'AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID='
+        $main | Should -Match 'param sentinelWorkspaceSubscriptionId string = subscription\(\)\.subscriptionId'
+        $alerting | Should -Match 'scope: resourceGroup\(workspaceSubscriptionId, workspaceResourceGroup\)'
+        $sentinelMode | Should -Match 'scope: resourceGroup\(sentinelWorkspaceSubscriptionId, sentinelWorkspaceResourceGroup\)'
+        $validate | Should -Match 'Assert-SubscriptionTenant \$env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID'
+        $preProvision | Should -Match '/subscriptions/\$env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID/'
+        $preDown | Should -Match '-SubscriptionId \$sentinelSubscriptionId'
     }
 }

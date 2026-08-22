@@ -25,6 +25,7 @@ param scheduleTimeZone string = 'UTC'
 param scheduleStartTime string = ''
 param generatedScheduleStartTime string = dateTimeAdd(utcNow('u'), 'PT15M')
 param sentinelWorkspaceName string = ''
+param sentinelWorkspaceSubscriptionId string = subscription().subscriptionId
 param sentinelWorkspaceResourceGroup string = ''
 param sentinelKql string = ''
 param functionAuthClientId string = ''
@@ -38,6 +39,7 @@ param sentinelAutomationRuleId string = ''
 ])
 param enableSignInAlerts string = 'false'
 param signInLogWorkspaceName string = ''
+param signInLogWorkspaceSubscriptionId string = subscription().subscriptionId
 param signInLogWorkspaceResourceGroup string = ''
 param signInAlertEmail string = ''
 @allowed([
@@ -70,7 +72,7 @@ var effectiveScheduleStartTime = empty(scheduleStartTime)
 
 resource signInLogWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = if (enableSignInAlerts == 'true') {
   name: signInLogWorkspaceName
-  scope: resourceGroup(signInLogWorkspaceResourceGroup)
+  scope: resourceGroup(signInLogWorkspaceSubscriptionId, signInLogWorkspaceResourceGroup)
 }
 
 module automation 'modes/automation-scheduled.bicep' = if (deploymentMode == 'automation-scheduled') {
@@ -119,6 +121,7 @@ module sentinelFunction 'modes/sentinel-function.bicep' = if (deploymentMode == 
     tags: tags
     emergencyAccessGroupObjectId: emergencyAccessGroupObjectId
     sentinelWorkspaceName: sentinelWorkspaceName
+    sentinelWorkspaceSubscriptionId: sentinelWorkspaceSubscriptionId
     sentinelWorkspaceResourceGroup: sentinelWorkspaceResourceGroup
     sentinelKql: sentinelKql
     functionAuthClientId: functionAuthClientId
@@ -149,6 +152,7 @@ module sentinelActivityAlerting 'modules/sentinel-activity-alerting.bicep' = if 
     namePrefix: namePrefix
     tags: tags
     workspaceName: sentinelWorkspaceName
+    workspaceSubscriptionId: sentinelWorkspaceSubscriptionId
     workspaceResourceGroup: sentinelWorkspaceResourceGroup
     emergencyUser1ObjectId: emergencyUser1ObjectId
     emergencyUser2ObjectId: emergencyUser2ObjectId

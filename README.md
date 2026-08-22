@@ -29,6 +29,7 @@ All Graph access uses managed identity. The template does not create a Key Vault
 - For `sentinel-function`, an existing Log Analytics workspace with Microsoft Sentinel enabled and Entra `AuditLogs` ingestion.
 - For optional Azure Monitor sign-in alerting, an existing Log Analytics workspace receiving the tenant's Entra `SigninLogs` and an email address for notifications.
 - For optional Sentinel activity alerting, an existing Sentinel-enabled workspace receiving both `SigninLogs` and `AuditLogs`, plus either a Microsoft Teams Workflow webhook or an authorized Teams Logic Apps API connection. Optional playbook email requires an existing authorized Office 365 Outlook Logic Apps connection in the deployment region.
+- A workspace may be in another subscription, but it must be in the same Entra tenant and the deployer must have the required read, deployment, and role-assignment permissions in that subscription and workspace resource group.
 
 Initialize and select an environment:
 
@@ -74,6 +75,7 @@ If a user must be created, a cryptographically random initial password is genera
 azd env set AZD_DEPLOYMENT_MODE sentinel-function
 azd env set AZD_SENTINEL_WORKSPACE_NAME law-security
 azd env set AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP rg-security
+azd env set AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID 00000000-0000-0000-0000-000000000000 # optional, same tenant
 azd env set AZD_EMERGENCY_GROUP_ID 22222222-2222-2222-2222-222222222222
 azd hooks run preprovision
 azd provision --preview
@@ -90,13 +92,24 @@ Enable this capability with any deployment mode when Entra sign-in logs already 
 azd env set AZD_ENABLE_SIGNIN_ALERTS true
 azd env set AZD_SIGNIN_LOG_WORKSPACE_NAME law-security
 azd env set AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP rg-security
+azd env set AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID 00000000-0000-0000-0000-000000000000 # optional, same tenant
 azd env set AZD_SIGNIN_ALERT_EMAIL identity-operations@contoso.com
 azd hooks run preprovision
 azd provision --preview
 azd up
 ```
 
-In `sentinel-function` mode, the sign-in workspace name and resource group default to the configured Sentinel workspace, so only the enable flag and email are additional. The workspace must ingest the tenant's `SigninLogs`; this template intentionally does not change tenant diagnostic settings or log retention. Deployment query validation fails closed if the table is unavailable.
+To leave identity lifecycle entirely with an external process, supply the existing group ID and disable identity management. The template then does not create or modify emergency users, group membership, Global Administrator assignments, the restricted administrative unit, or TAP configuration. Sign-in or Sentinel activity alerting additionally requires both user object IDs. The deployment still grants the selected workload the Microsoft Graph application roles needed to remediate Conditional Access policies; Sentinel Function mode may also create or configure its authentication application.
+
+```powershell
+azd env set AZD_MANAGE_EMERGENCY_IDENTITIES false
+azd env set AZD_EMERGENCY_GROUP_ID 22222222-2222-2222-2222-222222222222
+azd env set AZD_EMERGENCY_USER1_ID 11111111-1111-1111-1111-111111111111 # required with alerting
+azd env set AZD_EMERGENCY_USER2_ID 44444444-4444-4444-4444-444444444444 # required with alerting
+azd up
+```
+
+In `sentinel-function` mode, the sign-in workspace name, resource group, and subscription default to the configured Sentinel workspace, so only the enable flag and email are additional. The workspace must ingest the tenant's `SigninLogs`; this template intentionally does not change tenant diagnostic settings or log retention. Deployment query validation fails closed if the table is unavailable.
 
 The deployment creates a severity-0 Azure Monitor scheduled-query alert and an email action group in the azd environment's resource group. The alert resource uses the workspace's Azure region. Every five minutes, it searches a one-hour event-time range but selects only records ingested during the preceding five minutes; this accommodates normal ingestion delay without repeatedly alerting on the same record. It matches successful or failed sign-in attempts by either resolved emergency-user object ID. Failed attempts are included because they can reveal misuse even when no login succeeds. The rule is stateless (`autoMitigate: false`), so a later evaluation can notify again rather than remaining suppressed behind an unresolved emergency alert. Azure Monitor groups records found in the same evaluation into one alert notification.
 
@@ -122,6 +135,7 @@ The default interactive setup uses a Teams Logic Apps API connection and guides 
 azd env set AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS true
 azd env set AZD_SENTINEL_WORKSPACE_NAME law-security
 azd env set AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP rg-security
+azd env set AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID 00000000-0000-0000-0000-000000000000 # optional, same tenant
 azd hooks run preprovision
 azd provision --preview
 azd up
@@ -262,10 +276,12 @@ AuditLogs
 | `AZD_EMERGENCY_USER1_UPN` / `AZD_EMERGENCY_USER2_UPN` | none | No | Existing UPNs; resolved IDs are persisted |
 | `AZD_EMERGENCY_GROUP_ID` | none | No | Existing security-group object ID |
 | `AZD_ADMINISTRATIVE_UNIT_ID` | none | No | Existing administrative-unit object ID |
+| `AZD_MANAGE_EMERGENCY_IDENTITIES` | `true` | Always | Set `false` to require externally managed identities and skip user, group, role, AU, and TAP changes |
 | `AZD_USE_RESTRICTED_AU` | `true` | Always | Create/use a restricted management AU; set `false` to skip |
 | `AZD_ENABLE_TAP_POLICY` | `false` | Always | Enable/configure TAP and create reusable TAPs |
 | `AZD_ENABLE_SIGNIN_ALERTS` | `false` | Always | Deploy an optional critical alert for emergency-account sign-in activity |
 | `AZD_SIGNIN_LOG_WORKSPACE_NAME` | Sentinel workspace in Sentinel mode | When alerts enabled | Existing workspace receiving Entra `SigninLogs` |
+| `AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID` | Sentinel workspace subscription or `AZURE_SUBSCRIPTION_ID` | When alerts enabled | Subscription containing the sign-in-log workspace; must belong to `AZURE_TENANT_ID` |
 | `AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP` | Sentinel workspace resource group in Sentinel mode | When alerts enabled | Resource group containing the sign-in-log workspace |
 | `AZD_SIGNIN_ALERT_EMAIL` | none | When alerts enabled | One plain email address for the deployed action group |
 | `AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS` | `false` | Always | Deploy optional Sentinel sign-in, admin-activity, and account-change detections plus notifications |
@@ -283,6 +299,7 @@ AuditLogs
 | `AZD_SCHEDULE_FREQUENCY` | `Hour` | Automation/Logic App | `Minute`, `Hour`, `Day`, `Week`, or `Month` |
 | `AZD_AUTOMATION_TIME_ZONE` | `Etc/UTC` | Automation | Automation schedule timezone |
 | `AZD_SENTINEL_WORKSPACE_NAME` | sign-in workspace when available | Sentinel mode or activity alerts | Existing Sentinel workspace |
+| `AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID` | sign-in workspace subscription or `AZURE_SUBSCRIPTION_ID` | Sentinel mode or activity alerts | Subscription containing the Sentinel workspace; must belong to `AZURE_TENANT_ID` |
 | `AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP` | sign-in workspace resource group when available | Sentinel mode or activity alerts | Existing workspace resource group |
 | `AZD_FUNCTION_AUTH_CLIENT_ID` | created | Sentinel | Optional existing API app client ID; normally hook-managed |
 | `AZD_FUNCTION_AUTH_AUDIENCE` | `api://<appId>` | Sentinel with existing app | Resolvable API application ID URI |

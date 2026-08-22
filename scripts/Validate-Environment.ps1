@@ -67,6 +67,26 @@ Set-AzdDefault AZURE_LOCATION 'westus2'
 if (-not $env:AZURE_SUBSCRIPTION_ID) {
     throw 'AZURE_SUBSCRIPTION_ID is required.'
 }
+
+function Assert-SubscriptionTenant {
+    param([Parameter(Mandatory)][string] $SubscriptionId)
+
+    Assert-GuidValue 'workspace subscription ID' $SubscriptionId
+    if ($SubscriptionId -eq $env:AZURE_SUBSCRIPTION_ID) {
+        return
+    }
+    $tenantId = & az account show `
+        --subscription $SubscriptionId `
+        --query tenantId `
+        --output tsv `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $tenantId) {
+        throw "Unable to access workspace subscription '$SubscriptionId' with the current Azure CLI session."
+    }
+    if ($tenantId -ne $env:AZURE_TENANT_ID) {
+        throw "Workspace subscription '$SubscriptionId' belongs to tenant '$tenantId', not AZURE_TENANT_ID '$($env:AZURE_TENANT_ID)'."
+    }
+}
 if (-not $env:AZURE_TENANT_ID) {
     $subscriptionTenantId = & az account show `
         --subscription $env:AZURE_SUBSCRIPTION_ID `
@@ -82,6 +102,7 @@ Set-AzdDefault AZD_SCHEDULE_CRON '0 0 */6 * * *'
 Set-AzdDefault AZD_SCHEDULE_INTERVAL '6'
 Set-AzdDefault AZD_SCHEDULE_FREQUENCY 'Hour'
 Set-AzdDefault AZD_AUTOMATION_TIME_ZONE 'Etc/UTC'
+Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
 Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
@@ -131,7 +152,7 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
+foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
@@ -153,6 +174,9 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     }
     if ($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
         Set-AzdDefault AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP
+    }
+    if ($env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID) {
+        Set-AzdDefault AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID $env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID
     }
     if ($env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -notin 'workflow-webhook', 'api-connection', 'admin-configured') {
         throw 'AZD_SENTINEL_TEAMS_DELIVERY_MODE must be workflow-webhook, api-connection, or admin-configured.'
@@ -290,6 +314,9 @@ if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
         if ($env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP) {
             Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP
         }
+        if ($env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID) {
+            Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID $env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID
+        }
     }
     if (-not $env:AZD_SIGNIN_LOG_WORKSPACE_NAME -or -not $env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP) {
         throw 'Sign-in alerting requires AZD_SIGNIN_LOG_WORKSPACE_NAME and AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP.'
@@ -307,7 +334,9 @@ if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
         throw 'AZD_SIGNIN_ALERT_EMAIL must contain one plain email address without a display name.'
     }
 
-    $signInWorkspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SIGNIN_LOG_WORKSPACE_NAME"
+    Set-AzdDefault AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID $env:AZURE_SUBSCRIPTION_ID
+    Assert-SubscriptionTenant $env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID
+    $signInWorkspaceId = "/subscriptions/$env:AZD_SIGNIN_LOG_WORKSPACE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SIGNIN_LOG_WORKSPACE_NAME"
     & az resource show --ids $signInWorkspaceId --only-show-errors | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Sign-in log workspace '$($env:AZD_SIGNIN_LOG_WORKSPACE_NAME)' was not found in resource group '$($env:AZD_SIGNIN_LOG_WORKSPACE_RESOURCE_GROUP)'."
@@ -321,6 +350,20 @@ foreach ($guidName in @(
     'AZD_ADMINISTRATIVE_UNIT_ID'
 )) {
     Assert-GuidValue $guidName ([Environment]::GetEnvironmentVariable($guidName))
+}
+
+if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'false') {
+    if (-not $env:AZD_EMERGENCY_GROUP_ID) {
+        throw 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID.'
+    }
+    if (($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true' -or
+        $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') -and
+        (-not $env:AZD_EMERGENCY_USER1_ID -or -not $env:AZD_EMERGENCY_USER2_ID)) {
+        throw 'Alerting with externally managed emergency identities requires AZD_EMERGENCY_USER1_ID and AZD_EMERGENCY_USER2_ID.'
+    }
+    if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+        throw 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false.'
+    }
 }
 
 if ($env:AZD_SCHEDULE_CRON -notmatch '^\S+(\s+\S+){5}$') {
@@ -337,7 +380,9 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
     if (-not $env:AZD_SENTINEL_WORKSPACE_NAME -or -not $env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP) {
         throw 'Sentinel mode requires AZD_SENTINEL_WORKSPACE_NAME and AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP.'
     }
-    $workspaceId = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SENTINEL_WORKSPACE_NAME"
+    Set-AzdDefault AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID $env:AZURE_SUBSCRIPTION_ID
+    Assert-SubscriptionTenant $env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID
+    $workspaceId = "/subscriptions/$env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID/resourceGroups/$env:AZD_SENTINEL_WORKSPACE_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/$env:AZD_SENTINEL_WORKSPACE_NAME"
     $expectedAlertRuleId = "$workspaceId/providers/Microsoft.SecurityInsights/alertRules/"
     $expectedAutomationRuleId = "$workspaceId/providers/Microsoft.SecurityInsights/automationRules/"
     foreach ($ownership in @(
@@ -370,7 +415,8 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
 
 $user1Missing = -not $env:AZD_EMERGENCY_USER1_ID -and -not $env:AZD_EMERGENCY_USER1_UPN
 $user2Missing = -not $env:AZD_EMERGENCY_USER2_ID -and -not $env:AZD_EMERGENCY_USER2_UPN
-if (($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
+if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and
+    ($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
     throw 'Set AZD_EMERGENCY_DOMAIN when either emergency user needs to be created.'
 }
 
