@@ -39,6 +39,8 @@ Describe 'Optional Sentinel emergency activity alerting' {
         $rules | Should -Match 'TargetUserId = tostring\(TargetResource.id\)'
         $rules | Should -Match "aggregationKind: 'AlertPerResult'"
         ($rules | Select-String -Pattern 'createIncident: true' -AllMatches).Matches.Count | Should -Be 3
+        $rules | Should -Match "param emergencyUser3ObjectId string = ''"
+        $rules | Should -Match '\$\{emergencyUser3ObjectId\}'
     }
 
     It 'posts an adaptive card and optionally sends mail through an existing Outlook connection' {

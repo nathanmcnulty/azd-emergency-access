@@ -3,14 +3,29 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $allowedModes = @(
-    'automation-scheduled',
     'function-scheduled',
+    'automation-scheduled',
     'logicapp-scheduled',
     'sentinel-function'
 )
 
 function Test-Interactive {
     return -not ($env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected)
+}
+
+function Set-AzdValue {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+        [Parameter(Mandatory)]
+        [string] $Value
+    )
+
+    & azd env set $Name $Value | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to persist environment value for $Name."
+    }
+    [Environment]::SetEnvironmentVariable($Name, $Value)
 }
 
 function Set-AzdDefault {
@@ -22,12 +37,61 @@ function Set-AzdDefault {
     )
 
     if (-not [Environment]::GetEnvironmentVariable($Name)) {
-        & azd env set $Name $Value | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Unable to persist default value for $Name."
-        }
-        [Environment]::SetEnvironmentVariable($Name, $Value)
+        Set-AzdValue -Name $Name -Value $Value
     }
+}
+
+function Clear-AzdValue {
+    param([Parameter(Mandatory)][string] $Name)
+
+    & azd env set $Name '' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to clear environment value $Name."
+    }
+    [Environment]::SetEnvironmentVariable($Name, $null)
+}
+
+function Read-RequiredInput {
+    param([Parameter(Mandatory)][string] $Prompt)
+
+    $value = Read-Host $Prompt
+    if (-not $value) {
+        throw "$Prompt is required. Run 'azd up' again to continue setup."
+    }
+    return $value.Trim()
+}
+
+function Read-MenuSelection {
+    param(
+        [Parameter(Mandatory)][string] $Prompt,
+        [Parameter(Mandatory)][string[]] $Options
+    )
+
+    for ($index = 0; $index -lt $Options.Count; $index++) {
+        Write-Host "  $($index + 1). $($Options[$index])"
+    }
+    $selection = Read-Host $Prompt
+    if ($selection -notmatch '^\d+$' -or
+        [int]$selection -lt 1 -or [int]$selection -gt $Options.Count) {
+        throw "$Prompt must be a number from 1 through $($Options.Count). Run 'azd up' again to continue setup."
+    }
+    return [int]$selection
+}
+
+function Read-WorkspaceConfiguration {
+    param(
+        [Parameter(Mandatory)][string] $Prefix,
+        [Parameter(Mandatory)][string] $DisplayName
+    )
+
+    Write-Host "Configure the existing $DisplayName workspace."
+    $subscriptionId = Read-Host "Subscription ID [$($env:AZURE_SUBSCRIPTION_ID)]"
+    if (-not $subscriptionId) {
+        $subscriptionId = $env:AZURE_SUBSCRIPTION_ID
+    }
+    Set-AzdValue -Name "${Prefix}_SUBSCRIPTION_ID" -Value $subscriptionId.Trim()
+    Set-AzdValue -Name "${Prefix}_RESOURCE_GROUP" -Value (Read-RequiredInput "$DisplayName workspace resource group")
+    Set-AzdValue -Name "${Prefix}_NAME" -Value (Read-RequiredInput "$DisplayName workspace name")
 }
 
 function Assert-GuidValue {
@@ -39,25 +103,36 @@ function Assert-GuidValue {
     }
 }
 
+$guidedSetup = (Test-Interactive) -and (
+    -not $env:AZD_DEPLOYMENT_MODE -or $env:AZD_GUIDED_SETUP_ACTIVE -eq 'true'
+)
+if ($guidedSetup -and $env:AZD_GUIDED_SETUP_ACTIVE -ne 'true') {
+    Set-AzdValue AZD_GUIDED_SETUP_ACTIVE 'true'
+}
 if (-not $env:AZD_DEPLOYMENT_MODE) {
     if (-not (Test-Interactive)) {
         throw "AZD_DEPLOYMENT_MODE is required. Allowed values: $($allowedModes -join ', ')."
     }
 
-    Write-Host 'Choose one deployment mode:'
-    for ($index = 0; $index -lt $allowedModes.Count; $index++) {
-        Write-Host "  $($index + 1). $($allowedModes[$index])"
-    }
-    $selection = Read-Host 'Selection'
-    if ($selection -notmatch '^[1-4]$') {
-        throw 'Deployment mode selection must be a number from 1 through 4.'
-    }
-    $env:AZD_DEPLOYMENT_MODE = $allowedModes[[int]$selection - 1]
-    & azd env set AZD_DEPLOYMENT_MODE $env:AZD_DEPLOYMENT_MODE | Out-Null
+    Write-Host ''
+    Write-Host 'Emergency access setup'
+    Write-Host 'Choose how Conditional Access exclusions will be maintained:'
+    $selection = Read-MenuSelection 'Deployment mode' @(
+        'Scheduled Azure Function (recommended for most organizations)',
+        'Azure Automation runbook',
+        'Scheduled Logic App',
+        'Microsoft Sentinel detection and targeted Function'
+    )
+    $env:AZD_DEPLOYMENT_MODE = $allowedModes[$selection - 1]
+    Set-AzdValue AZD_DEPLOYMENT_MODE $env:AZD_DEPLOYMENT_MODE
 }
 
 if ($env:AZD_DEPLOYMENT_MODE -notin $allowedModes) {
     throw "Unsupported AZD_DEPLOYMENT_MODE '$($env:AZD_DEPLOYMENT_MODE)'. Allowed values: $($allowedModes -join ', ')."
+}
+if ($env:AZD_DEPLOYMENT_MODE -in 'function-scheduled', 'sentinel-function' -and
+    -not (Get-Command func -ErrorAction SilentlyContinue)) {
+    throw "Azure Functions Core Tools v4 is required for '$($env:AZD_DEPLOYMENT_MODE)'. Install it, then run 'azd up' again."
 }
 if ($env:AZD_PROVISIONED_MODE -and $env:AZD_PROVISIONED_MODE -ne $env:AZD_DEPLOYMENT_MODE) {
     throw "This azd environment is locked to provisioned mode '$($env:AZD_PROVISIONED_MODE)'. Run 'azd down' before changing AZD_DEPLOYMENT_MODE, or use a new azd environment."
@@ -104,7 +179,9 @@ Set-AzdDefault AZD_SCHEDULE_FREQUENCY 'Hour'
 Set-AzdDefault AZD_AUTOMATION_TIME_ZONE 'Etc/UTC'
 Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
 Set-AzdDefault AZD_USE_RESTRICTED_AU 'true'
+Set-AzdDefault AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
+Set-AzdDefault AZD_AUTHENTICATION_READY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
 Set-AzdDefault AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS 'false'
 Set-AzdDefault AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY 'false'
@@ -113,6 +190,135 @@ if (-not $env:AZD_AUTOMATION_START_TIME) {
     Set-AzdDefault AZD_AUTOMATION_START_TIME (
         [DateTimeOffset]::UtcNow.AddMinutes(15).ToString('yyyy-MM-ddTHH:mm:sszzz')
     )
+}
+
+if ($guidedSetup) {
+    Write-Host ''
+    Write-Host 'Choose how emergency identities will be prepared:'
+    $identitySelection = Read-MenuSelection 'Identity setup' @(
+        'Create and configure two new cloud-only emergency accounts (recommended)',
+        'Use existing accounts and ensure group membership and Global Administrator assignments',
+        'Use externally managed accounts and do not modify their identities or roles'
+    )
+
+    if ($identitySelection -eq 1) {
+        Set-AzdValue AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
+        foreach ($name in 'AZD_EMERGENCY_USER1_ID', 'AZD_EMERGENCY_USER1_UPN', 'AZD_EMERGENCY_USER2_ID', 'AZD_EMERGENCY_USER2_UPN', 'AZD_EMERGENCY_USER3_ID', 'AZD_EMERGENCY_USER3_UPN', 'AZD_EMERGENCY_GROUP_ID') {
+            Clear-AzdValue $name
+        }
+        $domain = Read-RequiredInput 'Verified Entra domain for the new accounts (for example, contoso.onmicrosoft.com)'
+        if ($domain -match '[@\s]' -or $domain -notmatch '\.') {
+            throw 'Enter a verified domain name without @, such as contoso.onmicrosoft.com.'
+        }
+        Set-AzdValue AZD_EMERGENCY_DOMAIN $domain
+    }
+    elseif ($identitySelection -eq 2) {
+        Set-AzdValue AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
+        foreach ($number in 1, 2) {
+            $reference = Read-RequiredInput "Emergency account $number UPN or object ID"
+            $parsedId = [guid]::Empty
+            if ([guid]::TryParse($reference, [ref]$parsedId)) {
+                Clear-AzdValue "AZD_EMERGENCY_USER${number}_UPN"
+                Set-AzdValue "AZD_EMERGENCY_USER${number}_ID" $reference
+            }
+            else {
+                Clear-AzdValue "AZD_EMERGENCY_USER${number}_ID"
+                Set-AzdValue "AZD_EMERGENCY_USER${number}_UPN" $reference
+            }
+        }
+        $existingGroupId = Read-Host 'Existing emergency group object ID (leave blank to create one)'
+        if ($existingGroupId) {
+            Set-AzdValue AZD_EMERGENCY_GROUP_ID $existingGroupId.Trim()
+        }
+        else {
+            Clear-AzdValue AZD_EMERGENCY_GROUP_ID
+        }
+    }
+    else {
+        Set-AzdValue AZD_MANAGE_EMERGENCY_IDENTITIES 'false'
+        Clear-AzdValue AZD_EMERGENCY_USER1_UPN
+        Clear-AzdValue AZD_EMERGENCY_USER2_UPN
+        Set-AzdValue AZD_EMERGENCY_GROUP_ID (Read-RequiredInput 'Externally managed emergency group object ID')
+        Set-AzdValue AZD_EMERGENCY_USER1_ID (Read-RequiredInput 'Emergency account 1 object ID')
+        Set-AzdValue AZD_EMERGENCY_USER2_ID (Read-RequiredInput 'Emergency account 2 object ID')
+        Set-AzdValue AZD_ENABLE_TAP_POLICY 'false'
+    }
+
+    if ($identitySelection -ne 3) {
+        Write-Host ''
+        $limitedSelection = Read-MenuSelection 'Limited recovery account' @(
+            'Do not add a third account (recommended for the standard Microsoft design)',
+            'Add a third account for Conditional Access and authentication-policy recovery'
+        )
+        Set-AzdValue AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT $(if ($limitedSelection -eq 2) { 'true' } else { 'false' })
+        if ($limitedSelection -eq 2 -and $identitySelection -eq 2) {
+            $reference = Read-RequiredInput 'Limited emergency account UPN or object ID'
+            $parsedId = [guid]::Empty
+            if ([guid]::TryParse($reference, [ref]$parsedId)) {
+                Clear-AzdValue AZD_EMERGENCY_USER3_UPN
+                Set-AzdValue AZD_EMERGENCY_USER3_ID $reference
+            }
+            else {
+                Clear-AzdValue AZD_EMERGENCY_USER3_ID
+                Set-AzdValue AZD_EMERGENCY_USER3_UPN $reference
+            }
+        }
+        elseif ($limitedSelection -eq 1) {
+            Clear-AzdValue AZD_EMERGENCY_USER3_ID
+            Clear-AzdValue AZD_EMERGENCY_USER3_UPN
+        }
+
+        Write-Host ''
+        Write-Host 'Temporary Access Pass (TAP) provides the one-time credential needed to register passkeys.'
+        $tapSelection = Read-MenuSelection 'TAP onboarding' @(
+            'Enable TAP onboarding and show each pass once (recommended)',
+            'Skip TAP changes and configure authentication methods separately'
+        )
+        Set-AzdValue AZD_ENABLE_TAP_POLICY $(if ($tapSelection -eq 1) { 'true' } else { 'false' })
+    }
+    else {
+        Set-AzdValue AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'
+    }
+
+    Write-Host ''
+    Write-Host 'Choose emergency-account use notifications. Existing Entra log ingestion is required.'
+    $alertSelection = Read-MenuSelection 'Alerting' @(
+        'Azure Monitor email from SigninLogs',
+        'Microsoft Sentinel incidents and a Teams channel message',
+        'Both Azure Monitor email and Sentinel/Teams',
+        'Configure alerting later'
+    )
+    $enableSignIn = $alertSelection -in 1, 3
+    $enableSentinelActivity = $alertSelection -in 2, 3
+    Set-AzdValue AZD_ENABLE_SIGNIN_ALERTS $(if ($enableSignIn) { 'true' } else { 'false' })
+    Set-AzdValue AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS $(if ($enableSentinelActivity) { 'true' } else { 'false' })
+    if ($alertSelection -eq 4) {
+        Write-Warning 'Emergency-account use will not be monitored by this deployment until alerting is configured.'
+    }
+
+    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $enableSentinelActivity) {
+        Read-WorkspaceConfiguration -Prefix 'AZD_SENTINEL_WORKSPACE' -DisplayName 'Sentinel'
+    }
+    if ($enableSignIn) {
+        if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $enableSentinelActivity) {
+            Write-Host 'The configured Sentinel workspace will also be used for SigninLogs.'
+        }
+        else {
+            Read-WorkspaceConfiguration -Prefix 'AZD_SIGNIN_LOG_WORKSPACE' -DisplayName 'SigninLogs'
+        }
+        Set-AzdValue AZD_SIGNIN_ALERT_EMAIL (Read-RequiredInput 'Email address for critical sign-in alerts')
+    }
+
+    Write-Host ''
+    Write-Host 'Setup choices are saved in the current azd environment.'
+    Write-Host "  Remediation: $($env:AZD_DEPLOYMENT_MODE)"
+    Write-Host "  Identity management: $($env:AZD_MANAGE_EMERGENCY_IDENTITIES)"
+    Write-Host "  Limited recovery account: $($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT)"
+    Write-Host "  TAP onboarding: $($env:AZD_ENABLE_TAP_POLICY)"
+    Write-Host "  Azure Monitor email: $($env:AZD_ENABLE_SIGNIN_ALERTS)"
+    Write-Host "  Sentinel and Teams: $($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS)"
+    Set-AzdValue AZD_GUIDED_SETUP_ACTIVE 'false'
+    Write-Host 'Continuing with tenant validation and deployment.'
 }
 if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     $resourceGroupName = if ($env:AZURE_RESOURCE_GROUP) {
@@ -152,7 +358,7 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
+foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT', 'AZD_ENABLE_TAP_POLICY', 'AZD_AUTHENTICATION_READY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
@@ -346,6 +552,7 @@ if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
 foreach ($guidName in @(
     'AZD_EMERGENCY_USER1_ID',
     'AZD_EMERGENCY_USER2_ID',
+    'AZD_EMERGENCY_USER3_ID',
     'AZD_EMERGENCY_GROUP_ID',
     'AZD_ADMINISTRATIVE_UNIT_ID'
 )) {
@@ -363,6 +570,9 @@ if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'false') {
     }
     if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
         throw 'AZD_ENABLE_TAP_POLICY cannot be true when AZD_MANAGE_EMERGENCY_IDENTITIES=false.'
+    }
+    if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
+        throw 'The optional limited emergency account is only supported when AZD_MANAGE_EMERGENCY_IDENTITIES=true.'
     }
 }
 
@@ -415,6 +625,13 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINE
 
 $user1Missing = -not $env:AZD_EMERGENCY_USER1_ID -and -not $env:AZD_EMERGENCY_USER1_UPN
 $user2Missing = -not $env:AZD_EMERGENCY_USER2_ID -and -not $env:AZD_EMERGENCY_USER2_UPN
+$user3Missing = -not $env:AZD_EMERGENCY_USER3_ID -and -not $env:AZD_EMERGENCY_USER3_UPN
+if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true' -and $user3Missing -and -not $env:AZD_EMERGENCY_DOMAIN) {
+    throw 'The limited emergency account requires AZD_EMERGENCY_USER3_ID, AZD_EMERGENCY_USER3_UPN, or AZD_EMERGENCY_DOMAIN.'
+}
+if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and ($user1Missing -or $user2Missing) -and $env:AZD_ENABLE_TAP_POLICY -ne 'true') {
+    throw 'Creating emergency accounts requires AZD_ENABLE_TAP_POLICY=true so usable phishing-resistant authentication is registered before roles are assigned.'
+}
 if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and
     ($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
     throw 'Set AZD_EMERGENCY_DOMAIN when either emergency user needs to be created.'

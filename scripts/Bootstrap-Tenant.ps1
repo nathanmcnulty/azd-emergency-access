@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $graphRoot = 'https://graph.microsoft.com'
 Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
+Import-Module "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Force
 Assert-AzdTenantContext
 
 function Test-Interactive {
@@ -14,13 +15,17 @@ function Test-Interactive {
 }
 
 function Connect-ProjectGraph {
+    if (-not (Get-Command Connect-MgGraph -ErrorAction SilentlyContinue)) {
+        throw "Microsoft.Graph.Authentication is required. Install it with 'Install-Module Microsoft.Graph.Authentication -Scope CurrentUser', then run 'azd up' again."
+    }
     $scopes = [Collections.Generic.List[string]]::new()
     if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
         @(
             'User.ReadWrite.All',
             'Group.ReadWrite.All',
             'AdministrativeUnit.ReadWrite.All',
-            'RoleManagement.ReadWrite.Directory'
+            'RoleManagement.ReadWrite.Directory',
+            'User.RevokeSessions.All'
         ) | ForEach-Object { $scopes.Add($_) }
     }
     @(
@@ -132,7 +137,7 @@ function New-DiscardedPassword {
 function Resolve-EmergencyUser {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet(1, 2)]
+        [ValidateSet(1, 2, 3)]
         [int] $Number
     )
 
@@ -255,18 +260,34 @@ function Resolve-AdministrativeUnit {
     return $unit
 }
 
-function Ensure-GlobalAdministrator {
-    param([Parameter(Mandatory)][string] $UserId)
+function Ensure-DirectoryRoleAssignment {
+    param(
+        [Parameter(Mandatory)][string] $UserId,
+        [Parameter(Mandatory)][string] $RoleDefinitionId,
+        [Parameter(Mandatory)][string] $RoleName
+    )
 
-    $roleDefinitionId = '62e90394-69f5-4237-9190-012177145e10'
     $filter = [Uri]::EscapeDataString("principalId eq '$UserId' and roleDefinitionId eq '$roleDefinitionId' and directoryScopeId eq '/'")
     $existing = Invoke-Graph GET "roleManagement/directory/roleAssignments?`$filter=$filter"
     if (@($existing.value).Count -eq 0) {
         Invoke-Graph POST 'roleManagement/directory/roleAssignments' @{
             principalId = $UserId
-            roleDefinitionId = $roleDefinitionId
+            roleDefinitionId = $RoleDefinitionId
             directoryScopeId = '/'
         } | Out-Null
+        Write-Host "Assigned $RoleName to user $UserId."
+    }
+}
+
+function Revoke-EmergencyUserSessions {
+    param([Parameter(Mandatory)][object[]] $Users)
+
+    foreach ($user in $Users) {
+        $result = Invoke-Graph POST "users/$($user.id)/revokeSignInSessions"
+        if ($result.value -ne $true) {
+            throw "Microsoft Graph did not confirm session revocation for $($user.userPrincipalName)."
+        }
+        Write-Host "Revoked existing sign-in sessions for $($user.userPrincipalName)."
     }
 }
 
@@ -470,6 +491,7 @@ function Invoke-TapOnboarding {
         return
     }
 
+    $createdTaps = [Collections.Generic.List[object]]::new()
     try {
         $currentTap = Invoke-Graph GET 'policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass' -Beta
         $target = [pscustomobject]@{
@@ -488,22 +510,72 @@ function Invoke-TapOnboarding {
         } -Beta | Out-Null
 
         if (-not (Test-Interactive)) {
-            Write-Warning 'TAP policy was configured, but TAP values cannot be emitted in a noninteractive run. Create reusable two-hour TAPs manually and register at least two passkeys per emergency user.'
-            return
+            throw 'TAP onboarding requires an interactive terminal because each pass is shown once. Rerun interactively, or disable TAP only after preparing phishing-resistant authentication separately.'
         }
 
-        foreach ($user in $Users) {
-            $tap = Invoke-Graph POST "users/$($user.id)/authentication/temporaryAccessPassMethods" @{
-                lifetimeInMinutes = 120
-                isUsableOnce = $false
-            } -Beta
-            Write-Host "Temporary Access Pass for $($user.userPrincipalName) (shown once): $($tap.temporaryAccessPass)"
+        try {
+            foreach ($user in $Users) {
+                $tap = Invoke-Graph POST "users/$($user.id)/authentication/temporaryAccessPassMethods" @{
+                    lifetimeInMinutes = 120
+                    isUsableOnce = $false
+                } -Beta
+                $createdTaps.Add([pscustomobject]@{
+                    UserId = $user.id
+                    UserPrincipalName = $user.userPrincipalName
+                    MethodId = $tap.id
+                })
+                Write-Host "Temporary Access Pass for $($user.userPrincipalName) (shown once): $($tap.temporaryAccessPass)"
+            }
+            Write-Host ''
+            Write-Host 'Register at least one passkey for every emergency account now; two separately stored passkeys per account are strongly recommended.'
+            Write-Host 'Open https://mysignins.microsoft.com/security-info in a private browser session for each account.'
+            Read-Host 'After passkey registration is complete for every account, press Enter to verify' | Out-Null
+            foreach ($user in $Users) {
+                $methods = Invoke-Graph GET "users/$($user.id)/authentication/fido2Methods"
+                if (@($methods.value).Count -eq 0) {
+                    throw "No passkey (FIDO2) is registered for $($user.userPrincipalName). Register one, then rerun 'azd up'."
+                }
+                Write-Host "Verified $(@($methods.value).Count) passkey(s) for $($user.userPrincipalName)."
+            }
         }
-        Write-Host 'Register at least two passkeys for each emergency account before considering onboarding complete.'
+        finally {
+            $cleanupErrors = [Collections.Generic.List[string]]::new()
+            foreach ($createdTap in $createdTaps) {
+                try {
+                    Invoke-Graph DELETE "users/$($createdTap.UserId)/authentication/temporaryAccessPassMethods/$($createdTap.MethodId)"
+                    Write-Host "Removed the onboarding TAP for $($createdTap.UserPrincipalName)."
+                }
+                catch {
+                    $cleanupErrors.Add("$($createdTap.UserPrincipalName): $($_.Exception.Message)")
+                }
+            }
+            if ($cleanupErrors.Count -gt 0) {
+                throw "One or more onboarding TAPs could not be removed: $($cleanupErrors -join '; ')"
+            }
+        }
     }
     catch {
-        Write-Warning "TAP onboarding could not be completed: $($_.Exception.Message)"
-        Write-Warning 'Core provisioning remains valid. Grant the required delegated Graph consent, enable the Temporary Access Pass policy for the emergency group, create a reusable 2-hour TAP for each account, and register at least two passkeys per account.'
+        throw "TAP and passkey onboarding did not complete, so privileged roles were not assigned. $($_.Exception.Message)"
+    }
+}
+
+function Confirm-AuthenticationReady {
+    param([Parameter(Mandatory)][object[]] $Users)
+
+    if ($env:AZD_AUTHENTICATION_READY -eq 'true') {
+        return
+    }
+    if (-not (Test-Interactive)) {
+        throw 'Authentication readiness must be confirmed before privileged roles are assigned. Register phishing-resistant authentication, then set AZD_AUTHENTICATION_READY=true and rerun.'
+    }
+    Write-Host ''
+    Write-Warning 'TAP onboarding was skipped. Privileged roles will not be assigned until phishing-resistant authentication is ready.'
+    foreach ($user in $Users) {
+        Write-Host "  $($user.userPrincipalName)"
+    }
+    $confirmation = Read-Host 'Type ready only after every listed account has a tested passkey or certificate'
+    if ($confirmation.Trim() -ne 'ready') {
+        throw "Authentication readiness was not confirmed. Complete authentication setup, then rerun 'azd up'."
     }
 }
 
@@ -514,10 +586,12 @@ if ($Phase -in 'All', 'Identities') {
             Resolve-EmergencyUser 1
             Resolve-EmergencyUser 2
         )
+        if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
+            $users += Resolve-EmergencyUser 3
+        }
         $group = Resolve-EmergencyGroup -Users $users
         foreach ($user in $users) {
             Add-DirectoryObjectMember "groups/$($group.id)/members" $user.id
-            Ensure-GlobalAdministrator $user.id
         }
 
         $administrativeUnit = Resolve-AdministrativeUnit
@@ -546,12 +620,45 @@ if ($Phase -in 'All', 'Workload') {
         Ensure-FunctionApiRoleAssignment $env:AZURE_PLAYBOOK_PRINCIPAL_ID
     }
 
-    if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+    if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
         $users = @(
             Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER1_ID)?`$select=id,userPrincipalName"
             Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER2_ID)?`$select=id,userPrincipalName"
         )
-        Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
+        if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
+            $users += Invoke-Graph GET "users/$($env:AZD_EMERGENCY_USER3_ID)?`$select=id,userPrincipalName"
+        }
+
+        $remediation = Invoke-EmergencyAccessRemediation `
+            -EmergencyAccountsGroupObjectId $env:AZD_EMERGENCY_GROUP_ID `
+            -SkipManagedIdentityConnection
+        Write-Host "Conditional Access reconciliation completed: $($remediation.policiesUpdated) updated, $($remediation.policiesAlreadyExcluded) already protected."
+        $currentUserFingerprint = (@($users.id | Sort-Object) -join ',')
+        if ($env:AZD_ONBOARDED_EMERGENCY_USER_IDS -ne $currentUserFingerprint) {
+            if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+                Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
+            }
+            else {
+                Confirm-AuthenticationReady -Users $users
+            }
+            Revoke-EmergencyUserSessions -Users $users
+            Set-AzdValue AZD_ONBOARDED_EMERGENCY_USER_IDS $currentUserFingerprint
+        }
+
+        foreach ($user in $users | Select-Object -First 2) {
+            Ensure-DirectoryRoleAssignment -UserId $user.id `
+                -RoleDefinitionId '62e90394-69f5-4237-9190-012177145e10' `
+                -RoleName 'Global Administrator'
+        }
+        if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
+            $limitedUser = $users[2]
+            Ensure-DirectoryRoleAssignment -UserId $limitedUser.id `
+                -RoleDefinitionId 'b1be1c3e-b65d-4f19-8427-f6fa0d97feb9' `
+                -RoleName 'Conditional Access Administrator'
+            Ensure-DirectoryRoleAssignment -UserId $limitedUser.id `
+                -RoleDefinitionId '0526716b-113d-4c15-b2c8-68e3c22b9f80' `
+                -RoleName 'Authentication Policy Administrator'
+        }
     }
 }
 Write-Host "Tenant bootstrap phase '$Phase' completed."

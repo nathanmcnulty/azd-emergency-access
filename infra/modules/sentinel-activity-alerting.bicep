@@ -7,6 +7,7 @@ param workspaceResourceGroup string
 param diagnosticsWorkspaceResourceId string
 param emergencyUser1ObjectId string
 param emergencyUser2ObjectId string
+param emergencyUser3ObjectId string = ''
 param sentinelServicePrincipalId string
 param assignAutomationContributor bool
 @secure()
@@ -322,6 +323,7 @@ module activityRules 'sentinel-activity-rules.bicep' = {
     namePrefix: namePrefix
     emergencyUser1ObjectId: emergencyUser1ObjectId
     emergencyUser2ObjectId: emergencyUser2ObjectId
+    emergencyUser3ObjectId: emergencyUser3ObjectId
     playbookId: playbook.id
     playbookPrincipalId: playbookIdentity.outputs.principalId
     tenantId: tenant().tenantId

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12490156290231570481"
+      "templateHash": "8790044751768549592"
     }
   },
   "parameters": {
@@ -186,6 +186,10 @@
       "defaultValue": ""
     },
     "emergencyUser2ObjectId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "emergencyUser3ObjectId": {
       "type": "string",
       "defaultValue": ""
     }
@@ -3079,6 +3083,9 @@
           "emergencyUser2ObjectId": {
             "value": "[parameters('emergencyUser2ObjectId')]"
           },
+          "emergencyUser3ObjectId": {
+            "value": "[parameters('emergencyUser3ObjectId')]"
+          },
           "notificationEmail": {
             "value": "[parameters('signInAlertEmail')]"
           }
@@ -3090,7 +3097,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "9422782683407757123"
+              "templateHash": "13535900583588971830"
             }
           },
           "parameters": {
@@ -3115,12 +3122,16 @@
               "type": "string",
               "minLength": 1
             },
+            "emergencyUser3ObjectId": {
+              "type": "string",
+              "defaultValue": ""
+            },
             "notificationEmail": {
               "type": "string"
             }
           },
           "variables": {
-            "signInQuery": "[join(createArray('SigninLogs', '| where ingestion_time() >= ago(5m)', format('| where UserId in~ (\"{0}\", \"{1}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId')), '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'), '\n')]"
+            "signInQuery": "[join(createArray('SigninLogs', '| where ingestion_time() >= ago(5m)', format('| where UserId in~ (\"{0}\", \"{1}\", \"{2}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId'), parameters('emergencyUser3ObjectId')), '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'), '\n')]"
           },
           "resources": [
             {
@@ -3236,6 +3247,9 @@
           "emergencyUser2ObjectId": {
             "value": "[parameters('emergencyUser2ObjectId')]"
           },
+          "emergencyUser3ObjectId": {
+            "value": "[parameters('emergencyUser3ObjectId')]"
+          },
           "sentinelServicePrincipalId": {
             "value": "[parameters('sentinelServicePrincipalId')]"
           },
@@ -3283,7 +3297,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "15671240657378624383"
+              "templateHash": "1594195961887270460"
             }
           },
           "parameters": {
@@ -3314,6 +3328,10 @@
             },
             "emergencyUser2ObjectId": {
               "type": "string"
+            },
+            "emergencyUser3ObjectId": {
+              "type": "string",
+              "defaultValue": ""
             },
             "sentinelServicePrincipalId": {
               "type": "string"
@@ -3597,6 +3615,9 @@
                   "emergencyUser2ObjectId": {
                     "value": "[parameters('emergencyUser2ObjectId')]"
                   },
+                  "emergencyUser3ObjectId": {
+                    "value": "[parameters('emergencyUser3ObjectId')]"
+                  },
                   "playbookId": {
                     "value": "[resourceId('Microsoft.Logic/workflows', variables('playbookName'))]"
                   },
@@ -3626,7 +3647,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.42.1.51946",
-                      "templateHash": "5892261026648404064"
+                      "templateHash": "7422110210475170214"
                     }
                   },
                   "parameters": {
@@ -3641,6 +3662,10 @@
                     },
                     "emergencyUser2ObjectId": {
                       "type": "string"
+                    },
+                    "emergencyUser3ObjectId": {
+                      "type": "string",
+                      "defaultValue": ""
                     },
                     "playbookId": {
                       "type": "string"
@@ -3665,9 +3690,9 @@
                     }
                   },
                   "variables": {
-                    "signInQuery": "[join(createArray('SigninLogs', format('| where UserId in~ (\"{0}\", \"{1}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId')), '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'), '\n')]",
-                    "adminActivityQuery": "[join(createArray('AuditLogs', '| extend ActorUserId = tostring(InitiatedBy.user.id), ActorUserPrincipalName = tostring(InitiatedBy.user.userPrincipalName)', format('| where ActorUserId in~ (\"{0}\", \"{1}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId')), '| project TimeGenerated, ActorUserPrincipalName, ActorUserId, OperationName, Category, Result, ResultReason, LoggedByService, CorrelationId'), '\n')]",
-                    "accountChangeQuery": "[join(createArray('AuditLogs', '| mv-expand TargetResource = TargetResources', '| extend TargetUserId = tostring(TargetResource.id), TargetUserPrincipalName = tostring(TargetResource.userPrincipalName)', format('| where TargetUserId in~ (\"{0}\", \"{1}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId')), '| extend ActorUserPrincipalName = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName), Identity)', '| project TimeGenerated, TargetUserPrincipalName, TargetUserId, ActorUserPrincipalName, OperationName, Category, Result, ResultReason, LoggedByService, CorrelationId'), '\n')]"
+                    "signInQuery": "[join(createArray('SigninLogs', format('| where UserId in~ (\"{0}\", \"{1}\", \"{2}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId'), parameters('emergencyUser3ObjectId')), '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'), '\n')]",
+                    "adminActivityQuery": "[join(createArray('AuditLogs', '| extend ActorUserId = tostring(InitiatedBy.user.id), ActorUserPrincipalName = tostring(InitiatedBy.user.userPrincipalName)', format('| where ActorUserId in~ (\"{0}\", \"{1}\", \"{2}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId'), parameters('emergencyUser3ObjectId')), '| project TimeGenerated, ActorUserPrincipalName, ActorUserId, OperationName, Category, Result, ResultReason, LoggedByService, CorrelationId'), '\n')]",
+                    "accountChangeQuery": "[join(createArray('AuditLogs', '| mv-expand TargetResource = TargetResources', '| extend TargetUserId = tostring(TargetResource.id), TargetUserPrincipalName = tostring(TargetResource.userPrincipalName)', format('| where TargetUserId in~ (\"{0}\", \"{1}\", \"{2}\")', parameters('emergencyUser1ObjectId'), parameters('emergencyUser2ObjectId'), parameters('emergencyUser3ObjectId')), '| extend ActorUserPrincipalName = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName), Identity)', '| project TimeGenerated, TargetUserPrincipalName, TargetUserId, ActorUserPrincipalName, OperationName, Category, Result, ResultReason, LoggedByService, CorrelationId'), '\n')]"
                   },
                   "resources": [
                     {

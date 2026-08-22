@@ -2,6 +2,7 @@ param workspaceName string
 param namePrefix string
 param emergencyUser1ObjectId string
 param emergencyUser2ObjectId string
+param emergencyUser3ObjectId string = ''
 param playbookId string
 param playbookPrincipalId string
 param tenantId string
@@ -17,7 +18,7 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existin
 var signInQuery = join(
   [
     'SigninLogs'
-    '| where UserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}")'
+    '| where UserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}", "${emergencyUser3ObjectId}")'
     '| project TimeGenerated, UserPrincipalName, UserId, IPAddress, AppDisplayName, ResourceDisplayName, ResultType, ResultDescription, CorrelationId'
   ],
   '\n'
@@ -27,7 +28,7 @@ var adminActivityQuery = join(
   [
     'AuditLogs'
     '| extend ActorUserId = tostring(InitiatedBy.user.id), ActorUserPrincipalName = tostring(InitiatedBy.user.userPrincipalName)'
-    '| where ActorUserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}")'
+    '| where ActorUserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}", "${emergencyUser3ObjectId}")'
     '| project TimeGenerated, ActorUserPrincipalName, ActorUserId, OperationName, Category, Result, ResultReason, LoggedByService, CorrelationId'
   ],
   '\n'
@@ -38,7 +39,7 @@ var accountChangeQuery = join(
     'AuditLogs'
     '| mv-expand TargetResource = TargetResources'
     '| extend TargetUserId = tostring(TargetResource.id), TargetUserPrincipalName = tostring(TargetResource.userPrincipalName)'
-    '| where TargetUserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}")'
+    '| where TargetUserId in~ ("${emergencyUser1ObjectId}", "${emergencyUser2ObjectId}", "${emergencyUser3ObjectId}")'
     '| extend ActorUserPrincipalName = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName), Identity)'
     '| project TimeGenerated, TargetUserPrincipalName, TargetUserId, ActorUserPrincipalName, OperationName, Category, Result, ResultReason, LoggedByService, CorrelationId'
   ],
