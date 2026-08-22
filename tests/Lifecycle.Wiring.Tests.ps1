@@ -48,6 +48,16 @@ Describe 'Lifecycle security wiring' {
         }
     }
 
+    It 'provides a resumable first-run administrator wizard' {
+        $validate | Should -Match 'AZD_GUIDED_SETUP_ACTIVE'
+        $validate | Should -Match "Scheduled Azure Function \(recommended for most organizations\)"
+        $validate | Should -Match 'Choose how emergency identities will be prepared'
+        $validate | Should -Match 'Temporary Access Pass \(TAP\) provides the one-time credential'
+        $validate | Should -Match 'Choose emergency-account use notifications'
+        $validate | Should -Match 'Azure Functions Core Tools v4 is required'
+        $validate | Should -Match "Set-AzdValue AZD_GUIDED_SETUP_ACTIVE 'false'"
+    }
+
     It 'supports externally managed emergency identities without privileged identity mutations' {
         $validate | Should -Match "Set-AzdDefault AZD_MANAGE_EMERGENCY_IDENTITIES 'true'"
         $validate | Should -Match 'AZD_MANAGE_EMERGENCY_IDENTITIES=false requires AZD_EMERGENCY_GROUP_ID'

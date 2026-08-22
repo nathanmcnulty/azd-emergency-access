@@ -1,0 +1,7 @@
+*.bicep text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

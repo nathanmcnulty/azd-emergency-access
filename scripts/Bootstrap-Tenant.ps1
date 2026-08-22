@@ -14,6 +14,9 @@ function Test-Interactive {
 }
 
 function Connect-ProjectGraph {
+    if (-not (Get-Command Connect-MgGraph -ErrorAction SilentlyContinue)) {
+        throw "Microsoft.Graph.Authentication is required. Install it with 'Install-Module Microsoft.Graph.Authentication -Scope CurrentUser', then run 'azd up' again."
+    }
     $scopes = [Collections.Generic.List[string]]::new()
     if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
         @(
