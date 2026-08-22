@@ -7,7 +7,21 @@ BeforeAll {
 
 Describe 'Invoke-EmergencyAccessRemediation' {
     BeforeEach {
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation
+        $script:policyState = @{}
+        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -MockWith {
+            $uriText = $Uri.ToString()
+            if ($Method -eq 'GET' -and $uriText.EndsWith('/policies')) {
+                return @{ value = @($script:policyState.Values) }
+            }
+            $policyId = ($uriText -split '/')[-1]
+            if ($Method -eq 'GET') {
+                return $script:policyState[$policyId]
+            }
+            if ($Method -eq 'PATCH') {
+                $payload = $Body | ConvertFrom-Json
+                $script:policyState[$policyId].conditions.users.excludeGroups = @($payload.conditions.users.excludeGroups)
+            }
+        }
     }
 
     It 'rejects an invalid emergency group ID' {
@@ -26,11 +40,10 @@ Describe 'Invoke-EmergencyAccessRemediation' {
         Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 0
     }
 
-    It 'adds the group when exclusions are null' {
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET'
-        } -MockWith {
-            @{ value = @(@{ id = $policy1; conditions = @{ users = @{ excludeGroups = $null } } }) }
+    It 'adds the group when exclusions are null and verifies the result' {
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = $null } }
         }
 
         $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
@@ -39,16 +52,14 @@ Describe 'Invoke-EmergencyAccessRemediation' {
         $result.policiesUpdated | Should -Be 1
         Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 1 `
             -ParameterFilter { $Method -eq 'PATCH' -and $Body -match $groupId }
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 2 `
+            -ParameterFilter { $Method -eq 'GET' -and $Uri.ToString().EndsWith($policy1) }
     }
 
     It 'does not patch a compliant policy' {
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET'
-        } -MockWith {
-            @{ value = @(@{
-                id = $policy1
-                conditions = @{ users = @{ excludeGroups = @($groupId) } }
-            }) }
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @($groupId) } }
         }
 
         $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
@@ -60,10 +71,9 @@ Describe 'Invoke-EmergencyAccessRemediation' {
     }
 
     It 'does not patch a non-user policy whose user target is None' {
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET'
-        } -MockWith {
-            @{ value = @(@{ id = $policy1; conditions = @{ users = @{ includeUsers = @('None'); excludeGroups = @() } } }) }
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('None'); excludeGroups = @() } }
         }
 
         $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
@@ -77,36 +87,26 @@ Describe 'Invoke-EmergencyAccessRemediation' {
 
     It 'preserves and deduplicates existing exclusions' {
         $existingId = '44444444-4444-4444-4444-444444444444'
-        $script:patchedBody = $null
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET'
-        } -MockWith {
-            @{ value = @(@{
-                id = $policy1
-                conditions = @{ users = @{ excludeGroups = @($existingId, $existingId) } }
-            }) }
-        }
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'PATCH'
-        } -MockWith {
-            $script:patchedBody = $Body
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @($existingId, $existingId) } }
         }
 
         Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
             -SkipManagedIdentityConnection
 
-        $exclusions = ($script:patchedBody | ConvertFrom-Json).conditions.users.excludeGroups
-        $exclusions -join ',' | Should -Be "$existingId,$groupId"
+        @($script:policyState[$policy1].conditions.users.excludeGroups) -join ',' |
+            Should -Be "$existingId,$groupId"
     }
 
     It 'evaluates every policy in scheduled mode' {
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET'
-        } -MockWith {
-            @{ value = @(
-                @{ id = $policy1; conditions = @{ users = @{ excludeGroups = @() } } },
-                @{ id = $policy2; conditions = @{ users = @{ excludeGroups = @($groupId) } } }
-            ) }
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
+        }
+        $script:policyState[$policy2] = @{
+            id = $policy2
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @($groupId) } }
         }
 
         $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
@@ -119,12 +119,12 @@ Describe 'Invoke-EmergencyAccessRemediation' {
 
     It 'follows every Graph page in scheduled mode' {
         Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET' -and $Uri -notmatch 'next=2'
+            $Method -eq 'GET' -and $Uri.ToString().EndsWith('/policies')
         } -MockWith {
             @{
                 value = @(@{
                     id = $policy1
-                    conditions = @{ users = @{ excludeGroups = @($groupId) } }
+                    conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @($groupId) } }
                 })
                 '@odata.nextLink' = 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?next=2'
             }
@@ -135,7 +135,7 @@ Describe 'Invoke-EmergencyAccessRemediation' {
             @{
                 value = @(@{
                     id = $policy2
-                    conditions = @{ users = @{ excludeGroups = @($groupId) } }
+                    conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @($groupId) } }
                 })
             }
         }
@@ -148,36 +148,100 @@ Describe 'Invoke-EmergencyAccessRemediation' {
             -ParameterFilter { $Method -eq 'GET' }
     }
 
-    It 'retrieves only the requested policy in targeted mode' {
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'GET'
-        } -MockWith {
-            @{ id = $policy1; conditions = @{ users = @{ excludeGroups = @() } } }
+    It 'retrieves and verifies only the requested policy in targeted mode' {
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
         }
 
         $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
             -CAPolicyId $policy1 -SkipManagedIdentityConnection
 
         $result.mode | Should -Be targeted
-        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 1 `
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 3 `
             -ParameterFilter { $Method -eq 'GET' -and $Uri.ToString().EndsWith($policy1) }
     }
 
-    It 'continues after a policy failure and returns structured failure data through the thrown exception' {
+    It 're-reads before patch and accepts a concurrent compliant update' {
+        $script:getCount = 0
         Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
             $Method -eq 'GET'
         } -MockWith {
-            @{ value = @(
-                @{ id = $policy1; conditions = @{ users = @{ excludeGroups = @() } } },
-                @{ id = $policy2; conditions = @{ users = @{ excludeGroups = @() } } }
-            ) }
+            $script:getCount++
+            if ($script:getCount -eq 1) {
+                return @{ value = @(@{
+                    id = $policy1
+                    conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
+                }) }
+            }
+            return @{
+                id = $policy1
+                conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @($groupId) } }
+            }
+        }
+
+        $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
+            -SkipManagedIdentityConnection
+
+        $result.policiesAlreadyExcluded | Should -Be 1
+        Should -Invoke Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -Times 0 `
+            -ParameterFilter { $Method -eq 'PATCH' }
+    }
+
+    It 'fails when post-write verification does not observe the exclusion' {
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
+        }
+        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
+            $Method -eq 'PATCH'
+        }
+
+        {
+            Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
+                -SkipManagedIdentityConnection
+        } | Should -Throw '*Failed to remediate*'
+    }
+
+    It 'retries a throttled PATCH with bounded backoff' {
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
+        }
+        $script:patchAttempts = 0
+        Mock Start-Sleep -ModuleName EmergencyAccess.Remediation
+        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
+            $Method -eq 'PATCH'
+        } -MockWith {
+            $script:patchAttempts++
+            if ($script:patchAttempts -eq 1) {
+                throw 'HTTP 429 throttled'
+            }
+            $policyId = ($Uri.ToString() -split '/')[-1]
+            $payload = $Body | ConvertFrom-Json
+            $script:policyState[$policyId].conditions.users.excludeGroups = @($payload.conditions.users.excludeGroups)
+        }
+
+        $result = Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `
+            -SkipManagedIdentityConnection
+
+        $result.policiesUpdated | Should -Be 1
+        $script:patchAttempts | Should -Be 2
+        Should -Invoke Start-Sleep -ModuleName EmergencyAccess.Remediation -Times 1
+    }
+
+    It 'continues after a policy failure and returns structured failure data through the thrown exception' {
+        $script:policyState[$policy1] = @{
+            id = $policy1
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
+        }
+        $script:policyState[$policy2] = @{
+            id = $policy2
+            conditions = @{ users = @{ includeUsers = @('All'); excludeGroups = @() } }
         }
         Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
             $Method -eq 'PATCH' -and $Uri.ToString().EndsWith($policy1)
         } -MockWith { throw 'Graph denied the update' }
-        Mock Invoke-MgGraphRequest -ModuleName EmergencyAccess.Remediation -ParameterFilter {
-            $Method -eq 'PATCH' -and $Uri.ToString().EndsWith($policy2)
-        }
 
         try {
             Invoke-EmergencyAccessRemediation -EmergencyAccountsGroupObjectId $groupId `

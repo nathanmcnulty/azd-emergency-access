@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot\Cleanup.Guards.psm1" -Force
 Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
+Import-Module "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Force
 Assert-AzdTenantContext
 if (-not $DeleteObjectsCreatedByThisEnvironment) {
     throw 'Use -DeleteObjectsCreatedByThisEnvironment to acknowledge tenant-object deletion.'
@@ -36,7 +37,10 @@ if ($missingScopes.Count -gt 0) {
     throw "The cached Microsoft Graph context is missing cleanup scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry."
 }
 function Remove-ConditionalAccessGroupReferences {
-    param([Parameter(Mandatory)][string] $GroupId)
+    param(
+        [Parameter(Mandatory)][string] $GroupId,
+        [Parameter(Mandatory)][Collections.Generic.List[string]] $ChangedPolicyIds
+    )
 
     $nextLink = 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies'
     while ($nextLink) {
@@ -60,6 +64,7 @@ function Remove-ConditionalAccessGroupReferences {
                 -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$($policy.id)" `
                 -ContentType 'application/json' `
                 -Body $body | Out-Null
+            $ChangedPolicyIds.Add([string]$policy.id)
         }
         $nextLinkProperty = $page.PSObject.Properties['@odata.nextLink']
         $nextLink = if ($nextLinkProperty) { [string]$nextLinkProperty.Value } else { '' }
@@ -130,11 +135,73 @@ $objects = @(
 foreach ($object in $objects) {
     if (Test-OwnedObjectId -CurrentId $object.CurrentId -OwnedId $object.OwnedId) {
         if ($PSCmdlet.ShouldProcess($object.OwnedId, "Delete object recorded by $($object.Ownership)")) {
-            if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
-                Remove-ConditionalAccessGroupReferences -GroupId $object.OwnedId
-                Remove-TapGroupReference -GroupId $object.OwnedId
+            $changedConditionalAccessPolicies = [Collections.Generic.List[string]]::new()
+            try {
+                if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
+                    Remove-ConditionalAccessGroupReferences `
+                        -GroupId $object.OwnedId `
+                        -ChangedPolicyIds $changedConditionalAccessPolicies
+                    Remove-TapGroupReference -GroupId $object.OwnedId
+                }
+                Invoke-MgGraphRequest -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)"
             }
-            Invoke-MgGraphRequest -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)"
+            catch {
+                $deletionError = $_
+                if ($object.Ownership -ne 'AZD_OWNED_EMERGENCY_GROUP_ID') {
+                    throw
+                }
+
+                $groupState = 'unknown'
+                $verificationErrors = [Collections.Generic.List[string]]::new()
+                for ($attempt = 1; $attempt -le 4 -and $groupState -eq 'unknown'; $attempt++) {
+                    try {
+                        Invoke-MgGraphRequest -Method GET -Uri "$($object.Uri)/$($object.OwnedId)?`$select=id" | Out-Null
+                        $groupState = 'exists'
+                    }
+                    catch {
+                        if ($_.Exception.Message -match 'HTTP 404|Request_ResourceNotFound') {
+                            $groupState = 'deleted'
+                        }
+                        else {
+                            $verificationErrors.Add($_.Exception.Message)
+                            if ($attempt -lt 4) {
+                                Start-Sleep -Seconds ([math]::Pow(2, $attempt - 1))
+                            }
+                        }
+                    }
+                }
+
+                if ($groupState -ne 'deleted') {
+                    $restoreErrors = [Collections.Generic.List[string]]::new()
+                    foreach ($policyId in $changedConditionalAccessPolicies) {
+                        try {
+                            Invoke-EmergencyAccessRemediation `
+                                -EmergencyAccountsGroupObjectId $object.OwnedId `
+                                -CAPolicyId $policyId `
+                                -SkipManagedIdentityConnection | Out-Null
+                        }
+                        catch {
+                            $restoreErrors.Add("$policyId`: $($_.Exception.Message)")
+                        }
+                    }
+                    if ($restoreErrors.Count -gt 0) {
+                        $stateDetail = if ($groupState -eq 'unknown') {
+                            " State verification also failed: $($verificationErrors -join '; ')."
+                        }
+                        else {
+                            ''
+                        }
+                        throw "Emergency group cleanup failed and Conditional Access rollback was incomplete. Operation: $($deletionError.Exception.Message)$stateDetail Rollback: $($restoreErrors -join '; ')"
+                    }
+                    $stateDetail = if ($groupState -eq 'unknown') {
+                        ' Group existence could not be confirmed after four attempts; rollback was attempted for every recorded policy change.'
+                    }
+                    else {
+                        ' All removed Conditional Access exclusions were restored.'
+                    }
+                    throw "Emergency group cleanup failed.$stateDetail $($deletionError.Exception.Message)"
+                }
+            }
             & azd env set $object.Ownership '' | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Unable to clear $($object.Ownership)." }
             & azd env set $object.CurrentName '' | Out-Null

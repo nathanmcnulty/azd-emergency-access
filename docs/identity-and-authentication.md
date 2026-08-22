@@ -52,14 +52,14 @@ The generated password cannot be recovered. Use TAP onboarding or your approved 
 The wizard requires TAP when it creates identities and recommends it for existing identities. When selected, it:
 
 1. Merges the emergency group into the existing TAP policy targets without replacing other targets.
-2. Creates one reusable two-hour TAP per account.
+2. Creates one reusable 60-minute TAP per account so multiple physical security keys can be registered during the same bounded onboarding session.
 3. Displays each TAP once in the interactive terminal.
-4. Pauses while the custodians register passkeys and verifies at least one passkey per account through Microsoft Graph.
+4. Pauses while the custodians register passkeys and verifies at least two device-bound FIDO2 security keys per account through Microsoft Graph.
 5. Deletes the temporary passes and revokes all onboarding sessions before assigning permanent administrator roles.
 
-Register at least one passkey per account to pass the deployment gate. Two passkeys per account, stored with separate custodians or in separate secure locations, are strongly recommended. TAP values are not generated in noninteractive runs because they cannot be delivered safely.
+Two physical FIDO2 security keys per account are required to pass the deployment gate. Store them with separate custodians or in separate secure locations. Synced passkeys do not satisfy this gate. TAP values are not generated in noninteractive runs because they cannot be delivered safely.
 
-If TAP is skipped for existing identities, the interactive deployment requires the administrator to confirm that every account already has tested phishing-resistant authentication. A noninteractive deployment must set `AZD_AUTHENTICATION_READY=true` explicitly. The account IDs are fingerprinted after onboarding so normal reruns do not revoke sessions again; changing the managed account set repeats the hardening gate.
+If TAP is skipped for existing identities, the deployment reads each account's registered FIDO2 methods and applies the same two-device-bound-key gate. There is no typed or environment-variable bypass. The account IDs are fingerprinted after onboarding so normal reruns do not revoke sessions again; every rerun still verifies the security-key invariant before role reconciliation.
 
 The session-revocation operation invalidates Entra refresh tokens. Application session cookies can persist until the application reevaluates them, so close every private onboarding session after passkey registration.
 

@@ -31,6 +31,7 @@ git diff --exit-code -- ./infra/main.json
 - **No Teams message arrives:** reauthorize the connection owner, verify team/channel membership, and inspect the failed Logic App action without printing secrets.
 - **No sign-in email arrives:** confirm the email action group and that the `SigninLogs` record reached the selected workspace.
 - **TAP returns HTTP 403:** grant the required authentication-method consent and rerun `azd up`. The deployment intentionally withholds privileged role assignments until onboarding completes.
+- **Security-key verification fails:** register two physical FIDO2 security keys for every managed emergency account. Synced passkeys and typed confirmations do not satisfy the deployment gate.
 
 ## Routine maintenance
 

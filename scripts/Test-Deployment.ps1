@@ -17,6 +17,55 @@ if (@($resources).Count -eq 0) {
 
 Write-Host "Verified $(@($resources).Count) resource(s) for mode '$($env:AZD_DEPLOYMENT_MODE)' in '$($env:AZURE_RESOURCE_GROUP)'."
 
+function Test-SentinelFunctionAuthentication {
+    if (-not $env:AZURE_FUNCTION_APP_NAME -or -not $env:AZURE_PLAYBOOK_PRINCIPAL_ID -or
+        -not $env:AZD_FUNCTION_AUTH_AUDIENCE) {
+        throw 'Sentinel Function authentication outputs are incomplete.'
+    }
+
+    $function = & az functionapp show `
+        --resource-group $env:AZURE_RESOURCE_GROUP `
+        --name $env:AZURE_FUNCTION_APP_NAME `
+        --query '{id:id,defaultHostName:defaultHostName}' `
+        --output json `
+        --only-show-errors | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $function.id -or -not $function.defaultHostName) {
+        throw "Unable to inspect Sentinel Function '$($env:AZURE_FUNCTION_APP_NAME)'."
+    }
+
+    $auth = & az resource show `
+        --ids "$($function.id)/config/authsettingsV2" `
+        --api-version 2024-04-01 `
+        --output json `
+        --only-show-errors | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $auth.properties) {
+        throw "Unable to inspect Easy Auth for Sentinel Function '$($env:AZURE_FUNCTION_APP_NAME)'."
+    }
+
+    $allowedAudiences = @($auth.properties.identityProviders.azureActiveDirectory.validation.allowedAudiences)
+    $allowedIdentities = @($auth.properties.identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedPrincipals.identities)
+    if ($auth.properties.platform.enabled -ne $true -or
+        $auth.properties.globalValidation.requireAuthentication -ne $true -or
+        $auth.properties.globalValidation.unauthenticatedClientAction -ne 'Return401' -or
+        $allowedAudiences.Count -ne 1 -or
+        $allowedAudiences[0] -ne $env:AZD_FUNCTION_AUTH_AUDIENCE -or
+        $allowedIdentities.Count -ne 1 -or
+        $allowedIdentities[0] -ne $env:AZURE_PLAYBOOK_PRINCIPAL_ID) {
+        throw 'Sentinel Function Easy Auth does not enforce the expected audience and exact playbook principal.'
+    }
+
+    $response = Invoke-WebRequest `
+        -Method Post `
+        -Uri "https://$($function.defaultHostName)/api/remediate" `
+        -ContentType 'application/json' `
+        -Body '{}' `
+        -SkipHttpErrorCheck
+    if ([int]$response.StatusCode -ne 401) {
+        throw "Unauthenticated Sentinel Function request returned HTTP $([int]$response.StatusCode); expected 401."
+    }
+    Write-Host 'Verified Sentinel Function Easy Auth configuration and live unauthenticated HTTP 401 response.'
+}
+
 if ($env:AZD_ENABLE_SIGNIN_ALERTS -eq 'true') {
     foreach ($resourceId in $env:AZURE_SIGNIN_ALERT_RULE_ID, $env:AZURE_SIGNIN_ALERT_ACTION_GROUP_ID) {
         if (-not $resourceId) {
@@ -135,6 +184,10 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     if ($env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY -eq 'true') {
         Test-SentinelNotificationDelivery -PlaybookResourceId $env:AZURE_SENTINEL_ACTIVITY_PLAYBOOK_RESOURCE_ID
     }
+}
+
+if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
+    Test-SentinelFunctionAuthentication
 }
 
 $accountNumbers = if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') { 1, 2, 3 } else { 1, 2 }

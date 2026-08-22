@@ -19,6 +19,8 @@ Describe 'Lifecycle security wiring' {
         $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
         $sentinelBicep = Get-Content "$PSScriptRoot\..\infra\modes\sentinel-function.bicep" -Raw
         $remediation = Get-Content "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Raw
+        $catalogWorkflow = Get-Content "$PSScriptRoot\..\.github\workflows\publish-azd-catalog.yml" -Raw
+        $validationWorkflow = Get-Content "$PSScriptRoot\..\.github\workflows\validate.yml" -Raw
     }
 
     It 'reconciles a v2 API audience role and service principal' {
@@ -55,7 +57,7 @@ Describe 'Lifecycle security wiring' {
         $validate | Should -Match 'AZD_GUIDED_SETUP_ACTIVE'
         $validate | Should -Match "Scheduled Azure Function \(recommended for most organizations\)"
         $validate | Should -Match 'Choose how emergency identities will be prepared'
-        $validate | Should -Match 'Temporary Access Pass \(TAP\) provides the one-time credential'
+        $validate | Should -Match 'reusable 60-minute Temporary Access Pass \(TAP\)'
         $validate | Should -Match 'Choose emergency-account use notifications'
         $deployFunction | Should -Match 'ZipFile\]::CreateFromDirectory'
         $deployFunction | Should -Match 'az functionapp deployment source config-zip'
@@ -116,7 +118,12 @@ Describe 'Lifecycle security wiring' {
         $revoke | Should -BeGreaterThan $ca
         $roles | Should -BeGreaterThan $revoke
         $bootstrap | Should -Match 'User\.RevokeSessions\.All'
+        $bootstrap | Should -Match 'UserAuthenticationMethod\.Read\.All'
         $bootstrap | Should -Match 'authentication/fido2Methods'
+        $bootstrap | Should -Match "passkeyType -eq 'deviceBound'"
+        $bootstrap | Should -Match '\$securityKeys\.Count -lt 2'
+        $bootstrap | Should -Not -Match 'AZD_AUTHENTICATION_READY'
+        $bootstrap | Should -Not -Match 'Confirm-AuthenticationReady'
         $bootstrap | Should -Match 'authentication/temporaryAccessPassMethods/\$\(\$createdTap\.MethodId\)'
         $bootstrap | Should -Match 'One or more onboarding TAPs could not be removed'
         $bootstrap | Should -Match 'AZD_ONBOARDED_EMERGENCY_USER_IDS'
@@ -173,6 +180,8 @@ Describe 'Lifecycle security wiring' {
         $bootstrap | Should -Match '\$includeTargets = @\(\$currentTap.includeTargets\)'
         $bootstrap | Should -Not -Match 'defaultLifetimeInMinutes = 120'
         $bootstrap | Should -Not -Match 'Enable Temporary Access Pass and create reusable 2-hour TAPs'
+        $bootstrap | Should -Match 'lifetimeInMinutes = 60'
+        $bootstrap | Should -Match 'isUsableOnce = \$false'
     }
 
     It 'fails the Logic App after processing when any policy patch fails' {
@@ -201,6 +210,29 @@ Describe 'Lifecycle security wiring' {
         $testDeployment | Should -Match "status -ne 'Succeeded'"
     }
 
+    It 'verifies Sentinel Function Easy Auth and an unauthenticated 401 response' {
+        $testDeployment | Should -Match 'function Test-SentinelFunctionAuthentication'
+        $testDeployment | Should -Match 'authsettingsV2'
+        $testDeployment | Should -Match 'allowedPrincipals\.identities'
+        $testDeployment | Should -Match 'SkipHttpErrorCheck'
+        $testDeployment | Should -Match 'StatusCode -ne 401'
+    }
+
+    It 'uses the exact verified Sentinel service principal for Azure RBAC' {
+        $postProvision | Should -Match '\$sentinelPrincipalId = \$env:AZD_SENTINEL_SERVICE_PRINCIPAL_ID'
+        $postProvision | Should -Match "\$sentinelAppId = '98785600-1bb7-4fb9-b9fa-19afe2c8a360'"
+        $postProvision | Should -Match 'az ad sp show'
+        $postProvision | Should -Not -Match "--display-name 'Azure Security Insights'"
+    }
+
+    It 'pins validation dependencies and scopes the catalog token to one step' {
+        $validationWorkflow | Should -Match 'Install-Module Pester -RequiredVersion 5\.7\.1'
+        $validationWorkflow | Should -Not -Match 'Install-Module Pester -MinimumVersion'
+        ([regex]::Matches($catalogWorkflow, 'GH_TOKEN:')).Count | Should -Be 1
+        $catalogWorkflow | Should -Match 'GH_TOKEN: \$\{\{ secrets\.AZD_CATALOG_TOKEN \}\}'
+        Test-Path "$PSScriptRoot\..\.github\dependabot.yml" | Should -BeTrue
+    }
+
     It 'skips non-user Conditional Access policies' {
         $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
         $logicApp | Should -Match 'includeUsers'
@@ -211,7 +243,14 @@ Describe 'Lifecycle security wiring' {
         $cleanup = Get-Content "$PSScriptRoot\..\scripts\Remove-TenantObjects.ps1" -Raw
         $cleanup | Should -Match 'function Remove-ConditionalAccessGroupReferences'
         $cleanup | Should -Match 'excludeGroups = \$remainingGroups'
-        $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-MgGraphRequest -Method DELETE'
+        $cleanup | Should -Match 'EmergencyAccess\.Remediation\.psm1'
+        $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences[\s\S]+-ChangedPolicyIds \$changedConditionalAccessPolicies[\s\S]+Invoke-MgGraphRequest -Method DELETE'
+        $cleanup | Should -Match '\[Collections\.Generic\.List\[string\]\] \$ChangedPolicyIds'
+        $cleanup.IndexOf('try {', $cleanup.LastIndexOf('$changedConditionalAccessPolicies =')) | Should -BeLessThan $cleanup.LastIndexOf('Remove-ConditionalAccessGroupReferences')
+        $cleanup | Should -Match 'Invoke-EmergencyAccessRemediation[\s\S]+-CAPolicyId \$policyId'
+        $cleanup | Should -Match 'all removed Conditional Access exclusions were restored'
+        $cleanup | Should -Match '\$attempt -le 4 -and \$groupState -eq ''unknown'''
+        $cleanup | Should -Match 'rollback was attempted for every recorded policy change'
         $cleanup | Should -Match 'Connect-MgGraph'
         $cleanup | Should -Match 'AZD_OWNED_EMERGENCY_USER3_ID'
         $cleanup | Should -Match 'function Remove-TapGroupReference'

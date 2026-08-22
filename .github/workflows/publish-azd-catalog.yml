@@ -17,15 +17,16 @@ jobs:
   notify-catalog:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.AZD_CATALOG_TOKEN }}
+      HAS_CATALOG_TOKEN: ${{ secrets.AZD_CATALOG_TOKEN != '' }}
     steps:
       - name: Skip when catalog token is not configured
-        if: env.GH_TOKEN == ''
+        if: env.HAS_CATALOG_TOKEN != 'true'
         run: echo "::notice title=Catalog dispatch skipped::AZD_CATALOG_TOKEN is not configured for this repository."
 
       - name: Notify azd website
-        if: env.GH_TOKEN != ''
+        if: env.HAS_CATALOG_TOKEN == 'true'
         env:
+          GH_TOKEN: ${{ secrets.AZD_CATALOG_TOKEN }}
           SOURCE_REPOSITORY: ${{ github.repository }}
           SOURCE_REF: ${{ github.ref }}
         run: |

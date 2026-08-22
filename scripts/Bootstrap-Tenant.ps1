@@ -40,6 +40,9 @@ function Connect-ProjectGraph {
         $scopes.Add('Policy.ReadWrite.AuthenticationMethod')
         $scopes.Add('UserAuthenticationMethod.ReadWrite.All')
     }
+    elseif ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
+        $scopes.Add('UserAuthenticationMethod.Read.All')
+    }
     $requiredScopes = @($scopes | Select-Object -Unique)
     $authenticationInitialized = $env:AZD_GRAPH_AUTH_INITIALIZED -eq 'true'
     $initializeAuthentication = -not $authenticationInitialized -and $Phase -ne 'Workload'
@@ -543,7 +546,7 @@ function Invoke-TapOnboarding {
         try {
             foreach ($user in $Users) {
                 $tap = Invoke-Graph POST "users/$($user.id)/authentication/temporaryAccessPassMethods" @{
-                    lifetimeInMinutes = 120
+                    lifetimeInMinutes = 60
                     isUsableOnce = $false
                 } -Beta
                 $createdTaps.Add([pscustomobject]@{
@@ -554,16 +557,10 @@ function Invoke-TapOnboarding {
                 Write-Host "Temporary Access Pass for $($user.userPrincipalName) (shown once): $($tap.temporaryAccessPass)"
             }
             Write-Host ''
-            Write-Host 'Register at least one passkey for every emergency account now; two separately stored passkeys per account are strongly recommended.'
+            Write-Host 'Register two physical FIDO2 security keys for every emergency account now.'
             Write-Host 'Open https://mysignins.microsoft.com/security-info in a private browser session for each account.'
             Read-Host 'After passkey registration is complete for every account, press Enter to verify' | Out-Null
-            foreach ($user in $Users) {
-                $methods = Invoke-Graph GET "users/$($user.id)/authentication/fido2Methods"
-                if (@($methods.value).Count -eq 0) {
-                    throw "No passkey (FIDO2) is registered for $($user.userPrincipalName). Register one, then rerun 'azd up'."
-                }
-                Write-Host "Verified $(@($methods.value).Count) passkey(s) for $($user.userPrincipalName)."
-            }
+            Assert-EmergencySecurityKeys -Users $Users
         }
         finally {
             $cleanupErrors = [Collections.Generic.List[string]]::new()
@@ -586,23 +583,16 @@ function Invoke-TapOnboarding {
     }
 }
 
-function Confirm-AuthenticationReady {
+function Assert-EmergencySecurityKeys {
     param([Parameter(Mandatory)][object[]] $Users)
 
-    if ($env:AZD_AUTHENTICATION_READY -eq 'true') {
-        return
-    }
-    if (-not (Test-Interactive)) {
-        throw 'Authentication readiness must be confirmed before privileged roles are assigned. Register phishing-resistant authentication, then set AZD_AUTHENTICATION_READY=true and rerun.'
-    }
-    Write-Host ''
-    Write-Warning 'TAP onboarding was skipped. Privileged roles will not be assigned until phishing-resistant authentication is ready.'
     foreach ($user in $Users) {
-        Write-Host "  $($user.userPrincipalName)"
-    }
-    $confirmation = Read-Host 'Type ready only after every listed account has a tested passkey or certificate'
-    if ($confirmation.Trim() -ne 'ready') {
-        throw "Authentication readiness was not confirmed. Complete authentication setup, then rerun 'azd up'."
+        $methods = Invoke-Graph GET "users/$($user.id)/authentication/fido2Methods"
+        $securityKeys = @($methods.value | Where-Object { $_.passkeyType -eq 'deviceBound' })
+        if ($securityKeys.Count -lt 2) {
+            throw "Emergency account '$($user.userPrincipalName)' has $($securityKeys.Count) device-bound FIDO2 security key(s). Register at least two physical security keys before privileged roles are assigned."
+        }
+        Write-Host "Verified $($securityKeys.Count) device-bound FIDO2 security keys for $($user.userPrincipalName)."
     }
 }
 
@@ -667,10 +657,13 @@ if ($Phase -in 'All', 'Workload') {
                 Invoke-TapOnboarding -Users $users -GroupId $env:AZD_EMERGENCY_GROUP_ID
             }
             else {
-                Confirm-AuthenticationReady -Users $users
+                Assert-EmergencySecurityKeys -Users $users
             }
             Revoke-EmergencyUserSessions -Users $users
             Set-AzdValue AZD_ONBOARDED_EMERGENCY_USER_IDS $currentUserFingerprint
+        }
+        else {
+            Assert-EmergencySecurityKeys -Users $users
         }
 
         foreach ($user in $users | Select-Object -First 2) {

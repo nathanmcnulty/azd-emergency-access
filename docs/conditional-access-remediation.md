@@ -27,10 +27,15 @@ The shared PowerShell core:
 - preserves and deduplicates every existing exclusion;
 - skips policies whose user target is `None`;
 - sends PATCH only when the emergency group is absent;
+- re-reads the policy immediately before mutation;
+- retries bounded 429 and 503 responses using `Retry-After` when Graph supplies it;
+- re-reads the policy after mutation and fails unless the exclusion is present;
 - continues evaluating other policies after an individual failure;
 - returns evaluated, updated, unchanged, and failed counts with policy IDs.
 
 Any PATCH failure causes the invocation to fail after processing, so Azure Functions, Automation, or Logic Apps can surface the problem without leaving other policies unchecked.
+
+Tenant cleanup records each policy from which it removes the owned group. If group deletion later fails while the group still exists, cleanup restores those exclusions and reports the deletion failure instead of leaving the emergency accounts unintentionally exposed to Conditional Access.
 
 ## Sentinel targeting
 

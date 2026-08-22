@@ -14,6 +14,58 @@ function Assert-ObjectId {
     }
 }
 
+function Invoke-ConditionalAccessGraphRequest {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('GET', 'PATCH')]
+        [string] $Method,
+        [Parameter(Mandatory)]
+        [string] $Uri,
+        [string] $Body
+    )
+
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        try {
+            $parameters = @{
+                Method = $Method
+                Uri = $Uri
+            }
+            if ($Body) {
+                $parameters.Body = $Body
+                $parameters.ContentType = 'application/json'
+            }
+            return Invoke-MgGraphRequest @parameters
+        }
+        catch {
+            $responseProperty = $_.Exception.PSObject.Properties['Response']
+            $response = if ($responseProperty) { $responseProperty.Value } else { $null }
+            $statusCode = if ($response -and $response.StatusCode) {
+                [int]$response.StatusCode
+            }
+            elseif ($_.Exception.Message -match 'HTTP\s+(429|503)') {
+                [int]$Matches[1]
+            }
+            else {
+                0
+            }
+            if ($statusCode -notin 429, 503 -or $attempt -eq 4) {
+                throw
+            }
+
+            $delaySeconds = [math]::Pow(2, $attempt - 1)
+            $retryAfter = if ($response -and $response.Headers) { $response.Headers.RetryAfter } else { $null }
+            if ($retryAfter -and $retryAfter.Delta) {
+                $delaySeconds = [math]::Ceiling($retryAfter.Delta.TotalSeconds)
+            }
+            elseif ($retryAfter -and $retryAfter.Date) {
+                $delaySeconds = [math]::Ceiling(($retryAfter.Date - [DateTimeOffset]::UtcNow).TotalSeconds)
+            }
+            $delaySeconds = [math]::Max(1, [math]::Min(30, $delaySeconds))
+            Start-Sleep -Seconds $delaySeconds
+        }
+    }
+}
+
 function Invoke-EmergencyAccessRemediation {
     [CmdletBinding()]
     param(
@@ -39,7 +91,7 @@ function Invoke-EmergencyAccessRemediation {
 
     $policies = if ($CAPolicyId) {
         @(
-            Invoke-MgGraphRequest -Method GET `
+            Invoke-ConditionalAccessGraphRequest -Method GET `
                 -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$CAPolicyId"
         )
     }
@@ -47,7 +99,7 @@ function Invoke-EmergencyAccessRemediation {
         $allPolicies = [System.Collections.Generic.List[object]]::new()
         $nextLink = 'https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies'
         while ($nextLink) {
-            $page = Invoke-MgGraphRequest -Method GET -Uri $nextLink
+            $page = Invoke-ConditionalAccessGraphRequest -Method GET -Uri $nextLink
             foreach ($policy in @($page.value)) {
                 $allPolicies.Add($policy)
             }
@@ -80,32 +132,43 @@ function Invoke-EmergencyAccessRemediation {
             $unchanged.Add($policyId)
             continue
         }
-        $current = @(
-            @($policy.conditions.users.excludeGroups) |
-                Where-Object { $_ } |
-                ForEach-Object { [string]$_ } |
-                Select-Object -Unique
-        )
-
-        if ($EmergencyAccountsGroupObjectId -in $current) {
+        if ($EmergencyAccountsGroupObjectId -in @($userConditions.excludeGroups)) {
             $unchanged.Add($policyId)
             continue
         }
-
-        $body = @{
-            conditions = @{
-                users = @{
-                    excludeGroups = @($current + $EmergencyAccountsGroupObjectId | Select-Object -Unique)
-                }
-            }
-        }
-
         try {
-            Invoke-MgGraphRequest `
-                -Method PATCH `
-                -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$policyId" `
-                -Body ($body | ConvertTo-Json -Depth 8 -Compress) `
-                -ContentType 'application/json'
+            $policyUri = "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies/$policyId"
+            $freshPolicy = Invoke-ConditionalAccessGraphRequest -Method GET -Uri $policyUri
+            $freshUserConditions = $freshPolicy.conditions.users
+            $freshIncludeUsers = @($freshUserConditions.includeUsers)
+            if ('None' -in $freshIncludeUsers) {
+                $unchanged.Add($policyId)
+                continue
+            }
+            $current = @(
+                @($freshUserConditions.excludeGroups) |
+                    Where-Object { $_ } |
+                    ForEach-Object { [string]$_ } |
+                    Select-Object -Unique
+            )
+            if ($EmergencyAccountsGroupObjectId -in $current) {
+                $unchanged.Add($policyId)
+                continue
+            }
+
+            $body = @{
+                conditions = @{
+                    users = @{
+                        excludeGroups = @($current + $EmergencyAccountsGroupObjectId | Select-Object -Unique)
+                    }
+                }
+            } | ConvertTo-Json -Depth 8 -Compress
+            Invoke-ConditionalAccessGraphRequest -Method PATCH -Uri $policyUri -Body $body | Out-Null
+
+            $verifiedPolicy = Invoke-ConditionalAccessGraphRequest -Method GET -Uri $policyUri
+            if ($EmergencyAccountsGroupObjectId -notin @($verifiedPolicy.conditions.users.excludeGroups)) {
+                throw "Conditional Access policy '$policyId' did not contain the emergency group after PATCH."
+            }
             $updated.Add($policyId)
         }
         catch {

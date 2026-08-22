@@ -195,26 +195,37 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'logicapp-scheduled') {
 }
 
 if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function' -or $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
-    $sentinelPrincipalId = & az ad sp list `
-        --display-name 'Azure Security Insights' `
-        --query '[0].id' `
-        --output tsv
+    $sentinelAppId = '98785600-1bb7-4fb9-b9fa-19afe2c8a360'
+    $sentinelPrincipalId = $env:AZD_SENTINEL_SERVICE_PRINCIPAL_ID
+    if (-not $sentinelPrincipalId) {
+        throw 'AZD_SENTINEL_SERVICE_PRINCIPAL_ID was not resolved during tenant bootstrap.'
+    }
+    $sentinelPrincipal = & az ad sp show `
+        --id $sentinelPrincipalId `
+        --query '{id:id,appId:appId}' `
+        --output json `
+        --only-show-errors | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $sentinelPrincipal -or
+        $sentinelPrincipal.id -ne $sentinelPrincipalId -or
+        $sentinelPrincipal.appId -ne $sentinelAppId) {
+        throw "The stored Sentinel service principal '$sentinelPrincipalId' does not resolve to expected application ID '$sentinelAppId'."
+    }
     $playbookScope = & az group show `
         --name $env:AZURE_RESOURCE_GROUP `
         --query id `
         --output tsv
 
-    if ($sentinelPrincipalId -and $playbookScope) {
-        & az role assignment create `
-            --assignee-object-id $sentinelPrincipalId `
-            --assignee-principal-type ServicePrincipal `
-            --role 'Microsoft Sentinel Automation Contributor' `
-            --scope $playbookScope `
-            --only-show-errors | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not $playbookScope) {
+        throw "Unable to resolve playbook resource group '$($env:AZURE_RESOURCE_GROUP)' for the Sentinel role assignment."
     }
-
-    if (-not $sentinelPrincipalId -or -not $playbookScope -or $LASTEXITCODE -ne 0) {
-        Write-Warning "The Microsoft Sentinel Automation Contributor assignment could not be completed. In Microsoft Sentinel, open Settings > Playbook permissions and grant access to playbook resource group '$($env:AZURE_RESOURCE_GROUP)'."
+    & az role assignment create `
+        --assignee-object-id $sentinelPrincipalId `
+        --assignee-principal-type ServicePrincipal `
+        --role 'Microsoft Sentinel Automation Contributor' `
+        --scope $playbookScope `
+        --only-show-errors | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "The Microsoft Sentinel Automation Contributor role could not be assigned to exact service principal '$sentinelPrincipalId'."
     }
 
 }

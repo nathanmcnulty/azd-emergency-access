@@ -34,6 +34,9 @@ Changes to catalog inputs on `main` trigger [the publishing workflow](../.github
 
 - Keep GitHub Actions pinned by full commit SHA.
 - Preserve generated ARM parity.
+- Pin PowerShell modules and Bicep versions exactly, and validate dependency updates before merging them.
 - Add focused tests for lifecycle, ownership, authentication, and administrator-facing contract changes.
 - Never introduce device-code authentication or stored credentials.
 - Do not weaken exact-ownership teardown guards to make cleanup more convenient.
+
+Protect `main` with required pull requests and the `validate` status check. Create releases from protected `main`, sign release tags, and direct production consumers to a versioned tag or immutable commit rather than floating `main`.

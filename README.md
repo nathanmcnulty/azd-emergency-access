@@ -57,10 +57,10 @@ Press Enter to accept choices marked `[default]`. The wizard reprompts invalid i
 
 ### Finish account onboarding
 
-If TAP onboarding was selected, each TAP is displayed exactly once. The deployment pauses while the custodians register passkeys, verifies that each account has a passkey, deletes the temporary passes, revokes the onboarding sessions, and only then assigns roles. Before closing the terminal:
+If TAP onboarding was selected, each reusable 60-minute TAP is displayed exactly once. The deployment pauses while the custodians register passkeys, verifies that each account has two device-bound FIDO2 security keys, deletes the temporary passes, revokes the onboarding sessions, and only then assigns roles. Before closing the terminal:
 
 1. Securely give each TAP to its intended custodian.
-2. Sign in as each emergency account and register at least two passkeys.
+2. Sign in as each emergency account and register at least two physical FIDO2 security keys.
 3. Test both accounts through the documented recovery procedure.
 4. Confirm the selected email and Teams notifications arrive.
 5. Store credentials and recovery devices separately from normal administrator credentials.

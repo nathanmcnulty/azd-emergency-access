@@ -17,7 +17,7 @@ jobs:
       - name: Run remediation tests
         shell: pwsh
         run: |
-          Install-Module Pester -MinimumVersion 5.7.1 -Force -Scope CurrentUser
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser
           $result = Invoke-Pester ./tests -Output Detailed -PassThru
           if ($result.FailedCount -gt 0) { exit 1 }
 
