@@ -106,4 +106,12 @@ Describe 'Optional Sentinel emergency activity alerting' {
         $preProvision | Should -Match '/subscriptions/\$env:AZD_SENTINEL_WORKSPACE_SUBSCRIPTION_ID/'
         $preDown | Should -Match '-SubscriptionId \$sentinelSubscriptionId'
     }
+
+    It 'sends notification playbook run diagnostics to an existing workspace' {
+        $main | Should -Match 'diagnosticsWorkspaceResourceId: sentinelWorkspace!\.id'
+        $alerting | Should -Match "resource playbookDiagnostics 'Microsoft\.Insights/diagnosticSettings@2021-05-01-preview'"
+        $alerting | Should -Match "category: 'WorkflowRuntime'"
+        $sentinelMode | Should -Match "resource playbookDiagnostics 'Microsoft\.Insights/diagnosticSettings@2021-05-01-preview'"
+        $sentinelMode | Should -Match 'workspaceId: observability\.outputs\.workspaceId'
+    }
 }

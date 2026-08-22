@@ -210,6 +210,26 @@ resource playbook 'Microsoft.Logic/workflows@2019-05-01' = {
   }
 }
 
+resource playbookDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'workflow-runtime'
+  scope: playbook
+  properties: {
+    workspaceId: observability.outputs.workspaceId
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
+  }
+}
+
 resource sentinelAutomationContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(resourceGroup().id, sentinelServicePrincipalId, 'f4c81013-99ee-4d62-a7ee-b3f1f648599a')
   properties: {

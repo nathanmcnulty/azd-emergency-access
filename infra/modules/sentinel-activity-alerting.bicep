@@ -4,6 +4,7 @@ param tags object = {}
 param workspaceName string
 param workspaceSubscriptionId string
 param workspaceResourceGroup string
+param diagnosticsWorkspaceResourceId string
 param emergencyUser1ObjectId string
 param emergencyUser2ObjectId string
 param sentinelServicePrincipalId string
@@ -279,6 +280,26 @@ resource playbook 'Microsoft.Logic/workflows@2019-05-01' = {
   dependsOn: [
     playbookIdentity
   ]
+}
+
+resource playbookDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'workflow-runtime'
+  scope: playbook
+  properties: {
+    workspaceId: diagnosticsWorkspaceResourceId
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
+  }
 }
 
 resource sentinelAutomationContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignAutomationContributor) {
