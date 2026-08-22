@@ -1,5 +1,5 @@
 BeforeAll {
-    $path = "$PSScriptRoot\..\scripts\Post-Provision.ps1"
+    $path = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/Post-Provision.ps1'
     $tokens = $null
     $parseErrors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile(
