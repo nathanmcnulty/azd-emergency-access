@@ -137,3 +137,20 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
     }
 }
 
+$accountNumbers = if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') { 1, 2, 3 } else { 1, 2 }
+$accountReferences = foreach ($number in $accountNumbers) {
+    $upn = [Environment]::GetEnvironmentVariable("AZD_EMERGENCY_USER${number}_UPN")
+    $id = [Environment]::GetEnvironmentVariable("AZD_EMERGENCY_USER${number}_ID")
+    if ($upn) { $upn } else { $id }
+}
+Write-Host ''
+Write-Host 'Emergency access deployment validation completed.'
+Write-Host "  Protected accounts: $($accountReferences -join ', ')"
+Write-Host "  Conditional Access maintenance: $($env:AZD_DEPLOYMENT_MODE)"
+Write-Host "  Azure Monitor sign-in email: $($env:AZD_ENABLE_SIGNIN_ALERTS)"
+Write-Host "  Sentinel activity and Teams: $($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS)"
+if ($env:AZD_ENABLE_SIGNIN_ALERTS -ne 'true' -and
+    $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -ne 'true') {
+    Write-Warning 'No emergency-account use notification path is enabled yet.'
+}
+Write-Host 'Next: test each account and recovery device, verify notifications, and record the drill.'

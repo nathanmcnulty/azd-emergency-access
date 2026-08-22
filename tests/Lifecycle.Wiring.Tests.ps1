@@ -62,6 +62,29 @@ Describe 'Lifecycle security wiring' {
         $deployFunction | Should -Not -Match 'func azure functionapp publish'
         $validate | Should -Not -Match 'Functions Core Tools'
         $validate | Should -Match "Set-AzdValue AZD_GUIDED_SETUP_ACTIVE 'false'"
+        $validate | Should -Match '\[default\]'
+        $validate | Should -Match 'Continue with these choices\?'
+        $validate | Should -Match 'Restart the setup wizard on the next azd up'
+        $validate | Should -Match 'Protect the accounts and group with a restricted management administrative unit'
+        $validate | Should -Match 'function Initialize-AzureCliContext'
+        $validate | Should -Match "@\('login', '--output', 'none'\)"
+        $validate | Should -Not -Match 'use-device-code'
+    }
+
+    It 'validates managed emergency identity safety properties' {
+        $bootstrap | Should -Match 'function Assert-EmergencyUserSuitable'
+        $bootstrap | Should -Match 'onPremisesSyncEnabled'
+        $bootstrap | Should -Match 'must use the tenant''s onmicrosoft\.com domain'
+        $bootstrap | Should -Match 'must be a static security group'
+        $bootstrap | Should -Match 'is not a restricted management administrative unit'
+        $validate | Should -Match 'AZD_EMERGENCY_DOMAIN must be the tenant initial domain'
+    }
+
+    It 'prints a concise deployment handoff' {
+        $testDeployment | Should -Match 'Emergency access deployment validation completed'
+        $testDeployment | Should -Match 'Protected accounts:'
+        $testDeployment | Should -Match 'No emergency-account use notification path is enabled yet'
+        $testDeployment | Should -Match 'test each account and recovery device'
     }
 
     It 'supports externally managed emergency identities without privileged identity mutations' {
@@ -191,6 +214,8 @@ Describe 'Lifecycle security wiring' {
         $cleanup | Should -Match 'Remove-ConditionalAccessGroupReferences -GroupId \$object\.OwnedId[\s\S]+Invoke-MgGraphRequest -Method DELETE'
         $cleanup | Should -Match 'Connect-MgGraph'
         $cleanup | Should -Match 'AZD_OWNED_EMERGENCY_USER3_ID'
+        $cleanup | Should -Match 'function Remove-TapGroupReference'
+        $cleanup | Should -Match 'Policy\.ReadWrite\.AuthenticationMethod'
         $cleanup | Should -Match 'Connect-MgGraph -NoWelcome'
         $cleanup | Should -Not -Match 'Connect-MgGraph[\s\S]{0,150}-Scopes'
         $cleanup | Should -Not -Match 'az account get-access-token'

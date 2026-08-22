@@ -54,28 +54,40 @@ function Clear-AzdValue {
 function Read-RequiredInput {
     param([Parameter(Mandatory)][string] $Prompt)
 
-    $value = Read-Host $Prompt
-    if (-not $value) {
-        throw "$Prompt is required. Run 'azd up' again to continue setup."
+    while ($true) {
+        $value = Read-Host $Prompt
+        if ($value -and $value.Trim()) {
+            return $value.Trim()
+        }
+        Write-Warning "$Prompt is required."
     }
-    return $value.Trim()
 }
 
 function Read-MenuSelection {
     param(
         [Parameter(Mandatory)][string] $Prompt,
-        [Parameter(Mandatory)][string[]] $Options
+        [Parameter(Mandatory)][string[]] $Options,
+        [int] $DefaultSelection = 0
     )
 
+    if ($DefaultSelection -lt 0 -or $DefaultSelection -gt $Options.Count) {
+        throw 'DefaultSelection must be zero or a valid option number.'
+    }
     for ($index = 0; $index -lt $Options.Count; $index++) {
-        Write-Host "  $($index + 1). $($Options[$index])"
+        $defaultLabel = if ($index + 1 -eq $DefaultSelection) { ' [default]' } else { '' }
+        Write-Host "  $($index + 1). $($Options[$index])$defaultLabel"
     }
-    $selection = Read-Host $Prompt
-    if ($selection -notmatch '^\d+$' -or
-        [int]$selection -lt 1 -or [int]$selection -gt $Options.Count) {
-        throw "$Prompt must be a number from 1 through $($Options.Count). Run 'azd up' again to continue setup."
+    while ($true) {
+        $selection = Read-Host $Prompt
+        if (-not $selection -and $DefaultSelection -gt 0) {
+            return $DefaultSelection
+        }
+        if ($selection -match '^\d+$' -and
+            [int]$selection -ge 1 -and [int]$selection -le $Options.Count) {
+            return [int]$selection
+        }
+        Write-Warning "$Prompt must be a number from 1 through $($Options.Count)."
     }
-    return [int]$selection
 }
 
 function Read-WorkspaceConfiguration {
@@ -117,12 +129,13 @@ if (-not $env:AZD_DEPLOYMENT_MODE) {
     Write-Host ''
     Write-Host 'Emergency access setup'
     Write-Host 'Choose how Conditional Access exclusions will be maintained:'
+    Write-Host 'Press Enter to accept a recommended choice shown as [default].'
     $selection = Read-MenuSelection 'Deployment mode' @(
         'Scheduled Azure Function (recommended for most organizations)',
         'Azure Automation runbook',
         'Scheduled Logic App',
         'Microsoft Sentinel detection and targeted Function'
-    )
+    ) -DefaultSelection 1
     $env:AZD_DEPLOYMENT_MODE = $allowedModes[$selection - 1]
     Set-AzdValue AZD_DEPLOYMENT_MODE $env:AZD_DEPLOYMENT_MODE
 }
@@ -138,6 +151,35 @@ Set-AzdDefault AZURE_LOCATION 'westus2'
 if (-not $env:AZURE_SUBSCRIPTION_ID) {
     throw 'AZURE_SUBSCRIPTION_ID is required.'
 }
+
+function Initialize-AzureCliContext {
+    $subscriptionId = & az account show `
+        --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --query id `
+        --output tsv `
+        --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0 -or $subscriptionId -ne $env:AZURE_SUBSCRIPTION_ID) {
+        if (-not (Test-Interactive)) {
+            throw "Azure CLI has no cached session for subscription '$($env:AZURE_SUBSCRIPTION_ID)'. Run standard 'az login', then retry."
+        }
+        Write-Host ''
+        Write-Host 'Azure CLI needs one standard browser sign-in. A cached session will be reused when available.'
+        $loginArguments = @('login', '--output', 'none')
+        if ($env:AZURE_TENANT_ID) {
+            $loginArguments += @('--tenant', $env:AZURE_TENANT_ID)
+        }
+        & az @loginArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Azure CLI authentication did not complete through the standard cached/browser flow.'
+        }
+    }
+    & az account set --subscription $env:AZURE_SUBSCRIPTION_ID
+    if ($LASTEXITCODE -ne 0) {
+        throw "Azure CLI cannot select subscription '$($env:AZURE_SUBSCRIPTION_ID)'."
+    }
+}
+
+Initialize-AzureCliContext
 
 function Assert-SubscriptionTenant {
     param([Parameter(Mandatory)][string] $SubscriptionId)
@@ -195,16 +237,19 @@ if ($guidedSetup) {
         'Create and configure two new cloud-only emergency accounts (recommended)',
         'Use existing accounts and ensure group membership and Global Administrator assignments',
         'Use externally managed accounts and do not modify their identities or roles'
-    )
+    ) -DefaultSelection 1
 
     if ($identitySelection -eq 1) {
         Set-AzdValue AZD_MANAGE_EMERGENCY_IDENTITIES 'true'
         foreach ($name in 'AZD_EMERGENCY_USER1_ID', 'AZD_EMERGENCY_USER1_UPN', 'AZD_EMERGENCY_USER2_ID', 'AZD_EMERGENCY_USER2_UPN', 'AZD_EMERGENCY_USER3_ID', 'AZD_EMERGENCY_USER3_UPN', 'AZD_EMERGENCY_GROUP_ID') {
             Clear-AzdValue $name
         }
-        $domain = Read-RequiredInput 'Verified Entra domain for the new accounts (for example, contoso.onmicrosoft.com)'
-        if ($domain -match '[@\s]' -or $domain -notmatch '\.') {
-            throw 'Enter a verified domain name without @, such as contoso.onmicrosoft.com.'
+        while ($true) {
+            $domain = Read-RequiredInput 'Initial Entra domain for the new accounts (for example, contoso.onmicrosoft.com)'
+            if ($domain -match '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.onmicrosoft\.com$') {
+                break
+            }
+            Write-Warning 'Emergency accounts must use the tenant initial domain, such as contoso.onmicrosoft.com.'
         }
         Set-AzdValue AZD_EMERGENCY_DOMAIN $domain
     }
@@ -242,10 +287,20 @@ if ($guidedSetup) {
 
     if ($identitySelection -ne 3) {
         Write-Host ''
+        $auSelection = Read-MenuSelection 'Restricted management' @(
+            'Protect the accounts and group with a restricted management administrative unit (recommended)',
+            'Skip the restricted management administrative unit'
+        ) -DefaultSelection 1
+        Set-AzdValue AZD_USE_RESTRICTED_AU $(if ($auSelection -eq 1) { 'true' } else { 'false' })
+        if ($auSelection -eq 2) {
+            Clear-AzdValue AZD_ADMINISTRATIVE_UNIT_ID
+        }
+
+        Write-Host ''
         $limitedSelection = Read-MenuSelection 'Limited recovery account' @(
             'Do not add a third account (recommended for the standard Microsoft design)',
             'Add a third account for Conditional Access and authentication-policy recovery'
-        )
+        ) -DefaultSelection 1
         Set-AzdValue AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT $(if ($limitedSelection -eq 2) { 'true' } else { 'false' })
         if ($limitedSelection -eq 2 -and $identitySelection -eq 2) {
             $reference = Read-RequiredInput 'Limited emergency account UPN or object ID'
@@ -269,10 +324,11 @@ if ($guidedSetup) {
         $tapSelection = Read-MenuSelection 'TAP onboarding' @(
             'Enable TAP onboarding and show each pass once (recommended)',
             'Skip TAP changes and configure authentication methods separately'
-        )
+        ) -DefaultSelection 1
         Set-AzdValue AZD_ENABLE_TAP_POLICY $(if ($tapSelection -eq 1) { 'true' } else { 'false' })
     }
     else {
+        Set-AzdValue AZD_USE_RESTRICTED_AU 'false'
         Set-AzdValue AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'
     }
 
@@ -309,10 +365,19 @@ if ($guidedSetup) {
     Write-Host 'Setup choices are saved in the current azd environment.'
     Write-Host "  Remediation: $($env:AZD_DEPLOYMENT_MODE)"
     Write-Host "  Identity management: $($env:AZD_MANAGE_EMERGENCY_IDENTITIES)"
+    Write-Host "  Restricted management AU: $($env:AZD_USE_RESTRICTED_AU)"
     Write-Host "  Limited recovery account: $($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT)"
     Write-Host "  TAP onboarding: $($env:AZD_ENABLE_TAP_POLICY)"
     Write-Host "  Azure Monitor email: $($env:AZD_ENABLE_SIGNIN_ALERTS)"
     Write-Host "  Sentinel and Teams: $($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS)"
+    $confirmation = Read-MenuSelection 'Continue with these choices?' @(
+        'Continue with validation and deployment',
+        'Restart the setup wizard on the next azd up'
+    ) -DefaultSelection 1
+    if ($confirmation -eq 2) {
+        Clear-AzdValue AZD_DEPLOYMENT_MODE
+        throw "Setup was not deployed. Run 'azd up' again to restart the wizard."
+    }
     Set-AzdValue AZD_GUIDED_SETUP_ACTIVE 'false'
     Write-Host 'Continuing with tenant validation and deployment.'
 }
@@ -631,6 +696,10 @@ if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and ($user1Missing -or $use
 if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true' -and
     ($user1Missing -or $user2Missing) -and -not $env:AZD_EMERGENCY_DOMAIN) {
     throw 'Set AZD_EMERGENCY_DOMAIN when either emergency user needs to be created.'
+}
+if ($env:AZD_EMERGENCY_DOMAIN -and
+    $env:AZD_EMERGENCY_DOMAIN -notmatch '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.onmicrosoft\.com$') {
+    throw 'AZD_EMERGENCY_DOMAIN must be the tenant initial domain, such as contoso.onmicrosoft.com.'
 }
 
 Write-Host "Environment contract validated for '$($env:AZD_DEPLOYMENT_MODE)'."

@@ -30,7 +30,7 @@ git diff --exit-code -- ./infra/main.json
 - **Sentinel automation does not run:** confirm `AuditLogs` ingestion, NRT rule health, Automation Contributor on the playbook resource group, and the automation-rule condition.
 - **No Teams message arrives:** reauthorize the connection owner, verify team/channel membership, and inspect the failed Logic App action without printing secrets.
 - **No sign-in email arrives:** confirm the email action group and that the `SigninLogs` record reached the selected workspace.
-- **TAP returns HTTP 403:** finish TAP and passkey onboarding manually; the core remediation deployment remains valid.
+- **TAP returns HTTP 403:** grant the required authentication-method consent and rerun `azd up`. The deployment intentionally withholds privileged role assignments until onboarding completes.
 
 ## Routine maintenance
 
@@ -56,7 +56,7 @@ Normal Azure cleanup deliberately retains the emergency accounts and group. Only
 ./scripts/Remove-TenantObjects.ps1 -DeleteObjectsCreatedByThisEnvironment
 ```
 
-The script requires confirmation and deletes only objects whose current IDs match the recorded ownership IDs. Before deleting an owned emergency group, it removes that exact ID from Conditional Access exclusions. Supplied or mismatched objects are retained.
+The script requires confirmation and deletes only objects whose current IDs match the recorded ownership IDs. Before deleting an owned emergency group, it removes that exact ID from Conditional Access exclusions and, when configured, the TAP policy. Supplied or mismatched objects are retained.
 
 ## Central monitoring and audit retention
 
