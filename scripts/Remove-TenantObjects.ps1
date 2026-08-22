@@ -28,6 +28,9 @@ $requiredScopes = @(
     'AdministrativeUnit.ReadWrite.All',
     'Policy.ReadWrite.ConditionalAccess'
 )
+if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
+    $requiredScopes += 'Policy.ReadWrite.AuthenticationMethod'
+}
 $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
 if ($missingScopes.Count -gt 0) {
     throw "The cached Microsoft Graph context is missing cleanup scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry."
@@ -61,6 +64,26 @@ function Remove-ConditionalAccessGroupReferences {
         $nextLinkProperty = $page.PSObject.Properties['@odata.nextLink']
         $nextLink = if ($nextLinkProperty) { [string]$nextLinkProperty.Value } else { '' }
     }
+}
+
+function Remove-TapGroupReference {
+    param([Parameter(Mandatory)][string] $GroupId)
+
+    if ($env:AZD_ENABLE_TAP_POLICY -ne 'true') {
+        return
+    }
+    $path = 'https://graph.microsoft.com/beta/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass'
+    $configuration = Invoke-MgGraphRequest -Method GET -Uri $path
+    $remainingTargets = @($configuration.includeTargets) | Where-Object { $_.id -ne $GroupId }
+    if ($remainingTargets.Count -eq @($configuration.includeTargets).Count) {
+        return
+    }
+    $body = @{
+        '@odata.type' = '#microsoft.graph.temporaryAccessPassAuthenticationMethodConfiguration'
+        state = $configuration.state
+        includeTargets = $remainingTargets
+    } | ConvertTo-Json -Depth 8 -Compress
+    Invoke-MgGraphRequest -Method PATCH -Uri $path -ContentType 'application/json' -Body $body | Out-Null
 }
 
 $objects = @(
@@ -109,6 +132,7 @@ foreach ($object in $objects) {
         if ($PSCmdlet.ShouldProcess($object.OwnedId, "Delete object recorded by $($object.Ownership)")) {
             if ($object.Ownership -eq 'AZD_OWNED_EMERGENCY_GROUP_ID') {
                 Remove-ConditionalAccessGroupReferences -GroupId $object.OwnedId
+                Remove-TapGroupReference -GroupId $object.OwnedId
             }
             Invoke-MgGraphRequest -Method DELETE -Uri "$($object.Uri)/$($object.OwnedId)"
             & azd env set $object.Ownership '' | Out-Null

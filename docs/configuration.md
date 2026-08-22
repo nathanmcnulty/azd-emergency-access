@@ -10,7 +10,7 @@ The interactive wizard persists its choices in the current azd environment. Adva
 | --- | --- | --- |
 | `AZD_DEPLOYMENT_MODE` | prompted | `function-scheduled`, `automation-scheduled`, `logicapp-scheduled`, or `sentinel-function` |
 | `AZURE_LOCATION` | `westus2` | Azure deployment region |
-| `AZD_EMERGENCY_DOMAIN` | none | Verified domain used when creating users |
+| `AZD_EMERGENCY_DOMAIN` | none | Tenant initial `onmicrosoft.com` domain used when creating users |
 | `AZD_EMERGENCY_USER1_ID`, `AZD_EMERGENCY_USER2_ID` | none | Existing user object IDs |
 | `AZD_EMERGENCY_USER1_UPN`, `AZD_EMERGENCY_USER2_UPN` | none | Existing user principal names to resolve |
 | `AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT` | `false` | Add a third account with Conditional Access Administrator and Authentication Policy Administrator |

@@ -12,6 +12,8 @@ The first-run wizard offers three paths:
 
 For either managed path, you can add an optional third account. It receives permanent **Conditional Access Administrator** and **Authentication Policy Administrator** roles, joins the same protected group and administrative unit, and is included in every alert query. It can recover common Conditional Access and authentication-method policy lockouts with substantially less authority than Global Administrator. It cannot perform general tenant recovery or manage individual users' authentication methods, so it supplements rather than replaces either Global Administrator emergency account.
 
+Before making privileged changes, the template verifies that every managed account is enabled, cloud-only, an internal member, and uses the tenant's `onmicrosoft.com` domain. A supplied group must be a static security group, and a supplied administrative unit must already have restricted management enabled. These checks prevent an ordinary or synchronized administrator identity from being converted accidentally.
+
 The deployment records exact ownership IDs for objects it creates. It refuses to replace an owned privileged object until the original is explicitly cleaned up.
 
 ## Required administrator access

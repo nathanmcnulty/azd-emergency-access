@@ -22,7 +22,6 @@ Install:
 - [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
 - PowerShell 7.4 or later
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) for the recommended Function mode
 - Microsoft Graph authentication for PowerShell:
 
 ```powershell
@@ -33,12 +32,7 @@ Use an administrator who can deploy Azure resources, create role assignments, pr
 
 Email and Teams alerting require Entra `SigninLogs` and `AuditLogs` to already flow to Log Analytics or Microsoft Sentinel. The wizard lets you configure alerting later if those prerequisites are not ready.
 
-If the administrator is not already signed in, initialize the standard browser-backed caches once:
-
-```powershell
-azd auth login
-az login
-```
+`azd up` reuses the existing `azd`, Azure CLI, and Microsoft Graph caches. When a cache is missing, the normal operating-system or browser sign-in opens once. No device-code flow is used.
 
 ### Deploy
 
@@ -53,12 +47,13 @@ The first `azd up` walks through:
 
 - the remediation service, with a scheduled Azure Function recommended for most organizations;
 - creating, reusing, or externally managing the emergency identities;
+- optional restricted management protection for the accounts and group;
 - an optional limited recovery account for Conditional Access and authentication-policy lockouts;
 - optional TAP and passkey onboarding;
 - Azure Monitor email, Sentinel and Teams, both notification paths, or later configuration;
 - normal Azure and Microsoft Graph browser consent.
 
-The choices are saved in the azd environment, so rerunning `azd up` is non-destructive and does not repeat a completed setup wizard. An interrupted wizard resumes on the next interactive run. Device-code authentication is never used.
+Press Enter to accept choices marked `[default]`. The wizard reprompts invalid input and shows a final review before any tenant or Azure resources are changed. The choices are saved in the azd environment, so rerunning `azd up` is non-destructive and does not repeat a completed setup wizard. An interrupted wizard resumes on the next interactive run. Device-code authentication is never used.
 
 ### Finish account onboarding
 
@@ -109,6 +104,7 @@ The guided Teams option asks for a copied Teams channel link, creates the connec
 | [Configuration reference](docs/configuration.md) | Environment variables, existing identities, and automation |
 | [Operations](docs/operations.md) | Verification, troubleshooting, maintenance, and cleanup |
 | [Development and publishing](docs/development.md) | Repository validation, generated templates, and catalog updates |
+| [Future administrator experience](FUTURE.md) | Deferred workspace discovery, central health monitoring, and drill orchestration |
 
 ## Cleanup
 

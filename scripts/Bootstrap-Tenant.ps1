@@ -197,12 +197,35 @@ function Resolve-EmergencyUser {
     return $user
 }
 
+function Assert-EmergencyUserSuitable {
+    param([Parameter(Mandatory)][object] $User)
+
+    $current = Invoke-Graph GET "users/$($User.id)?`$select=id,userPrincipalName,displayName,accountEnabled,userType,onPremisesSyncEnabled"
+    if ($current.accountEnabled -ne $true) {
+        throw "Emergency account '$($current.userPrincipalName)' must be enabled before it can be managed."
+    }
+    if ($current.userType -ne 'Member') {
+        throw "Emergency account '$($current.userPrincipalName)' must be an internal member account, not userType '$($current.userType)'."
+    }
+    if ($current.onPremisesSyncEnabled -eq $true) {
+        throw "Emergency account '$($current.userPrincipalName)' is synchronized from on-premises. Use a cloud-only account."
+    }
+    if ($current.userPrincipalName -notmatch '@[^@]+\.onmicrosoft\.com$') {
+        throw "Emergency account '$($current.userPrincipalName)' must use the tenant's onmicrosoft.com domain."
+    }
+    return $current
+}
+
 function Resolve-EmergencyGroup {
     param([object[]] $Users)
 
     if ($env:AZD_EMERGENCY_GROUP_ID) {
         Assert-OwnedObjectNotReplaced AZD_OWNED_EMERGENCY_GROUP_ID $env:AZD_EMERGENCY_GROUP_ID
-        return Invoke-Graph GET "groups/$($env:AZD_EMERGENCY_GROUP_ID)?`$select=id,displayName"
+        $group = Invoke-Graph GET "groups/$($env:AZD_EMERGENCY_GROUP_ID)?`$select=id,displayName,securityEnabled,groupTypes"
+        if ($group.securityEnabled -ne $true -or 'DynamicMembership' -in @($group.groupTypes)) {
+            throw "Existing emergency group '$($group.displayName)' must be a static security group."
+        }
+        return $group
     }
 
     $group = Invoke-Graph POST 'groups' @{
@@ -247,7 +270,11 @@ function Resolve-AdministrativeUnit {
     }
     if ($env:AZD_ADMINISTRATIVE_UNIT_ID) {
         Assert-OwnedObjectNotReplaced AZD_OWNED_ADMINISTRATIVE_UNIT_ID $env:AZD_ADMINISTRATIVE_UNIT_ID
-        return Invoke-Graph GET "directory/administrativeUnits/$($env:AZD_ADMINISTRATIVE_UNIT_ID)"
+        $unit = Invoke-Graph GET "directory/administrativeUnits/$($env:AZD_ADMINISTRATIVE_UNIT_ID)"
+        if ($unit.isMemberManagementRestricted -ne $true) {
+            throw "Existing administrative unit '$($unit.displayName)' is not a restricted management administrative unit."
+        }
+        return $unit
     }
 
     $unit = Invoke-Graph POST 'directory/administrativeUnits' @{
@@ -589,6 +616,7 @@ if ($Phase -in 'All', 'Identities') {
         if ($env:AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT -eq 'true') {
             $users += Resolve-EmergencyUser 3
         }
+        $users = @($users | ForEach-Object { Assert-EmergencyUserSuitable -User $_ })
         $group = Resolve-EmergencyGroup -Users $users
         foreach ($user in $users) {
             Add-DirectoryObjectMember "groups/$($group.id)/members" $user.id
