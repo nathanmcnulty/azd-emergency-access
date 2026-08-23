@@ -71,7 +71,7 @@ For application-only branded email, consider Azure Communication Services as a s
 
 ## Delivery validation and health
 
-Set `AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY=true` after the Teams connection is authorized to post one clearly labeled test message and fail when the real Logic App delivery action does not succeed.
+Run `./scripts/Test-Deployment.ps1 -TestDelivery` after the Teams connection is authorized to post one clearly labeled test message and fail when the real Logic App delivery action does not succeed. Default validation never sends a notification.
 
 The Sentinel playbooks export `WorkflowRuntime` logs and metrics to existing workspaces. A central operations solution can alert on failed or disabled playbook runs without deploying a polling Function for each environment.
 

@@ -1,0 +1,28 @@
+{
+  "manifestVersion": "1.0",
+  "components": [
+    {
+      "id": "deployment-validation",
+      "version": "0.3.2",
+      "sourceRepository": "https://github.com/nathanmcnulty/azd-reference",
+      "sourceRevision": "6914d6b9382aca33cae5089b1d73f235cb1319a1",
+      "files": [
+        {
+          "source": "components/powershell/deployment-validation/Azd.DeploymentValidation.psd1",
+          "target": "scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1",
+          "sha256": "eabf223b704c962c27f722482e1240a50ce4247c57705030d74515aae179818e"
+        },
+        {
+          "source": "components/powershell/deployment-validation/Azd.DeploymentValidation.psm1",
+          "target": "scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psm1",
+          "sha256": "fcf075cbea2dea568ad18145632185a82cb50210628ea332765434c3b62f7b5e"
+        },
+        {
+          "source": "schemas/deployment-validation.schema.json",
+          "target": "scripts/vendor/Azd.DeploymentValidation/deployment-validation.schema.json",
+          "sha256": "f219f008bb04a2eed5230a623191a8caff5363b319d02cbd8c9dd0e239848828"
+        }
+      ]
+    }
+  ]
+}

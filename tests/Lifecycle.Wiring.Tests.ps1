@@ -6,6 +6,7 @@ Describe 'Lifecycle security wiring' {
         $preProvision = Get-Content "$PSScriptRoot\..\scripts\Pre-Provision.ps1" -Raw
         $validate = Get-Content "$PSScriptRoot\..\scripts\Validate-Environment.ps1" -Raw
         $testDeployment = Get-Content "$PSScriptRoot\..\scripts\Test-Deployment.ps1" -Raw
+        $deploymentAdapter = Get-Content "$PSScriptRoot\..\scripts\Deployment.Validation.psm1" -Raw
         $deployFunction = Get-Content "$PSScriptRoot\..\scripts\Deploy-Function.ps1" -Raw
         $parameters = Get-Content "$PSScriptRoot\..\infra\main.parameters.json" -Raw
         $mainBicep = Get-Content "$PSScriptRoot\..\infra\main.bicep" -Raw
@@ -83,10 +84,10 @@ Describe 'Lifecycle security wiring' {
     }
 
     It 'prints a concise deployment handoff' {
-        $testDeployment | Should -Match 'Emergency access deployment validation completed'
-        $testDeployment | Should -Match 'Protected accounts:'
-        $testDeployment | Should -Match 'No emergency-account use notification path is enabled yet'
-        $testDeployment | Should -Match 'test each account and recovery device'
+        $testDeployment | Should -Match "TemplateName 'azd-emergency-access'"
+        $deploymentAdapter | Should -Match 'protected account\(s\)'
+        $deploymentAdapter | Should -Match 'No emergency-account use notification path is enabled yet'
+        $testDeployment | Should -Match 'Test every emergency account and recovery device'
     }
 
     It 'supports externally managed emergency identities without privileged identity mutations' {
@@ -162,6 +163,7 @@ Describe 'Lifecycle security wiring' {
     It 'requires one matching tenant before Graph mutations' {
         $tenantGuards | Should -Match 'ExpectedTenantId -ne \$SubscriptionTenantId'
         $tenantGuards | Should -Match 'ExpectedTenantId -ne \$ActiveTenantId'
+        $tenantGuards | Should -Match '\$active\.id -ne \[string\] \$env:AZURE_SUBSCRIPTION_ID'
         $bootstrap | Should -Match 'Assert-AzdTenantContext'
         $bootstrap | Should -Match 'Connect-MgGraph'
         $bootstrap | Should -Match '-TenantId \$env:AZURE_TENANT_ID'
@@ -214,23 +216,26 @@ Describe 'Lifecycle security wiring' {
     }
 
     It 'offers an opt-in live Sentinel notification delivery smoke test' {
-        $validate | Should -Match "Set-AzdDefault AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY 'false'"
-        $validate | Should -Match 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY requires AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS=true'
-        $testDeployment | Should -Match 'Test-SentinelNotificationDelivery'
-        $testDeployment | Should -Match 'listCallbackUrl\?api-version=2019-05-01'
-        $testDeployment | Should -Match '\[TEST\] Emergency access notification delivery validation'
-        $testDeployment | Should -Match ([regex]::Escape("-Headers @{ 'x-ms-client-tracking-id' = `$trackingId }"))
-        $testDeployment | Should -Match 'properties\.correlation\.clientTrackingId -eq \$trackingId'
-        $testDeployment | Should -Not -Match 'startTime -ge \$startedUtc'
-        $testDeployment | Should -Match "status -ne 'Succeeded'"
+        $testDeployment | Should -Match '\[switch\] \$TestDelivery'
+        $testDeployment | Should -Match 'AllowSyntheticDelivery:\$TestDelivery'
+        $validate | Should -Not -Match 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY'
+        $deploymentAdapter | Should -Match 'Invoke-EmergencySentinelNotificationDelivery'
+        $deploymentAdapter | Should -Match 'listCallbackUrl\?api-version=2019-05-01'
+        $deploymentAdapter | Should -Match '\[TEST\] Emergency access notification delivery validation'
+        $deploymentAdapter | Should -Match ([regex]::Escape("-Headers @{ 'x-ms-client-tracking-id' = `$trackingId }"))
+        $deploymentAdapter | Should -Match 'properties\.correlation\.clientTrackingId -eq \$trackingId'
+        $deploymentAdapter | Should -Match "status -ne 'Succeeded'"
+        $deploymentAdapter | Should -Match 'Post_message_to_Teams_channel'
+        $deploymentAdapter | Should -Match 'Post_adaptive_card_to_Teams'
+        $deploymentAdapter | Should -Match 'Send_incident_email'
     }
 
     It 'verifies Sentinel Function Easy Auth and an unauthenticated 401 response' {
-        $testDeployment | Should -Match 'function Test-SentinelFunctionAuthentication'
-        $testDeployment | Should -Match 'authsettingsV2'
-        $testDeployment | Should -Match 'allowedPrincipals\.identities'
-        $testDeployment | Should -Match 'SkipHttpErrorCheck'
-        $testDeployment | Should -Match 'StatusCode -ne 401'
+        $deploymentAdapter | Should -Match 'function Test-EmergencySentinelFunctionAuthentication'
+        $deploymentAdapter | Should -Match 'authsettingsV2'
+        $deploymentAdapter | Should -Match 'allowedPrincipals\.identities'
+        $deploymentAdapter | Should -Match 'SkipHttpErrorCheck'
+        $deploymentAdapter | Should -Match 'StatusCode -ne 401'
     }
 
     It 'uses the exact verified Sentinel service principal for Azure RBAC' {
@@ -296,5 +301,42 @@ Describe 'Tenant guards' {
 
     It 'rejects an active tenant mismatch before mutations' {
         { Assert-TenantMatch -ExpectedTenantId '11111111-1111-1111-1111-111111111111' -SubscriptionTenantId '11111111-1111-1111-1111-111111111111' -ActiveTenantId '22222222-2222-2222-2222-222222222222' } | Should -Throw '*Tenant context mismatch*'
+    }
+
+    It 'rejects an active subscription mismatch in the same tenant' {
+        InModuleScope Tenant.Guards {
+            $oldSubscription = $env:AZURE_SUBSCRIPTION_ID
+            $oldTenant = $env:AZURE_TENANT_ID
+            try {
+                $env:AZURE_SUBSCRIPTION_ID = '11111111-1111-4111-8111-111111111111'
+                $env:AZURE_TENANT_ID = '33333333-3333-4333-8333-333333333333'
+                Mock az {
+                    if ($args -contains '--subscription') {
+                        return '{"id":"11111111-1111-4111-8111-111111111111","tenantId":"33333333-3333-4333-8333-333333333333"}'
+                    }
+                    return '{"id":"22222222-2222-4222-8222-222222222222","tenantId":"33333333-3333-4333-8333-333333333333"}'
+                }
+                { Assert-AzdTenantContext } | Should -Throw '*Azure subscription mismatch*'
+            }
+            finally {
+                $env:AZURE_SUBSCRIPTION_ID = $oldSubscription
+                $env:AZURE_TENANT_ID = $oldTenant
+            }
+        }
+    }
+
+    It 'hydrates a missing process value from the selected azd environment' {
+        InModuleScope Tenant.Guards {
+            $oldValue = $env:AZD_VALIDATION_HYDRATION_TEST
+            try {
+                $env:AZD_VALIDATION_HYDRATION_TEST = $null
+                Mock azd { 'hydrated-value' }
+                Get-AzdEnvironmentValue 'AZD_VALIDATION_HYDRATION_TEST' | Should -Be 'hydrated-value'
+                $env:AZD_VALIDATION_HYDRATION_TEST | Should -Be 'hydrated-value'
+            }
+            finally {
+                $env:AZD_VALIDATION_HYDRATION_TEST = $oldValue
+            }
+        }
     }
 }
