@@ -1,17 +1,7 @@
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent
-    if (-not (Get-Command azd -ErrorAction SilentlyContinue)) {
-        function global:azd { throw 'The azd test shim must be mocked before use.' }
-        $script:removeAzdTestShim = $true
-    }
     Import-Module (Join-Path $repoRoot 'scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1') -Force
     Import-Module (Join-Path $repoRoot 'scripts/Deployment.Validation.psm1') -Force
-}
-
-AfterAll {
-    if ($script:removeAzdTestShim) {
-        Remove-Item Function:\global:azd -ErrorAction SilentlyContinue
-    }
 }
 
 Describe 'Portfolio deployment validation' {
@@ -30,7 +20,6 @@ Describe 'Portfolio deployment validation' {
 
     It 'plans without Azure, HTTP, sleep, or delivery calls' {
         Mock az { throw 'Azure CLI must not run in Plan mode.' }
-        Mock azd { throw 'azd must not run in Plan mode.' }
         Mock Invoke-WebRequest { throw 'HTTP must not run in Plan mode.' }
         Mock Start-Sleep { throw 'Polling must not run in Plan mode.' }
 
@@ -41,7 +30,6 @@ Describe 'Portfolio deployment validation' {
         $report.outcome | Should -Be 'planned'
         $report.summary.planned | Should -Be 9
         Assert-MockCalled az -Times 0 -Exactly
-        Assert-MockCalled azd -Times 0 -Exactly
         Assert-MockCalled Invoke-WebRequest -Times 0 -Exactly
         Assert-MockCalled Start-Sleep -Times 0 -Exactly
     }

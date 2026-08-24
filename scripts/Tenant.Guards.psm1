@@ -42,16 +42,23 @@ function Assert-AzdTenantContext {
     }
 }
 
+function Invoke-AzdEnvironmentValueRead {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Name)
+
+    if (-not (Get-Command azd -ErrorAction SilentlyContinue)) { return $null }
+    $value = & azd env get-value $Name 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($value -join "`n").Trim()
+}
+
 function Get-AzdEnvironmentValue {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string] $Name)
 
     $processValue = [Environment]::GetEnvironmentVariable($Name)
     if ($null -ne $processValue -and $processValue -ne '') { return $processValue }
-    if (-not (Get-Command azd -ErrorAction SilentlyContinue)) { return $null }
-    $value = & azd env get-value $Name 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $value = ($value -join "`n").Trim()
+    $value = Invoke-AzdEnvironmentValueRead -Name $Name
     if ($value) {
         [Environment]::SetEnvironmentVariable($Name, $value, 'Process')
         return $value
