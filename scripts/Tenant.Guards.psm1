@@ -19,7 +19,7 @@ function Assert-TenantMatch {
 
 function Assert-AzdTenantContext {
     [CmdletBinding()]
-    param()
+    param([switch] $PassThru)
 
     if (-not $env:AZURE_SUBSCRIPTION_ID -or -not $env:AZURE_TENANT_ID) {
         throw 'AZURE_SUBSCRIPTION_ID and AZURE_TENANT_ID are required before Microsoft Graph operations.'
@@ -30,7 +30,9 @@ function Assert-AzdTenantContext {
         throw "Unable to resolve the tenant for subscription '$($env:AZURE_SUBSCRIPTION_ID)'."
     }
     $subscription = $subscriptionJson | ConvertFrom-Json
-    $activeJson = & az account show --query '{id:id,tenantId:tenantId}' --output json --only-show-errors
+    $activeJson = & az account show `
+        --query '{id:id,tenantId:tenantId,environmentName:environmentName,user:user}' `
+        --output json --only-show-errors
     if ($LASTEXITCODE -ne 0 -or -not $activeJson) {
         throw 'Unable to resolve the active Azure CLI tenant.'
     }
@@ -39,6 +41,9 @@ function Assert-AzdTenantContext {
         -SubscriptionTenantId ([string] $subscription.tenantId) -ActiveTenantId ([string] $active.tenantId)
     if ([string] $active.id -ne [string] $env:AZURE_SUBSCRIPTION_ID) {
         throw "Azure subscription mismatch. The azd environment expects '$($env:AZURE_SUBSCRIPTION_ID)' but Azure CLI is active in '$($active.id)'."
+    }
+    if ($PassThru) {
+        return $active
     }
 }
 

@@ -41,17 +41,21 @@ Install the authentication module once:
 Install-Module Microsoft.Graph.Authentication -Scope CurrentUser
 ```
 
-The first tenant phase calls standard `Connect-MgGraph` once with the complete scope set required by the wizard choices. Windows Account Manager, the current token cache, or a normal browser performs authentication. Later phases use `Connect-MgGraph -NoWelcome` and the same cached context. Managed-account setup requests user, group, role-management, Conditional Access, session-revocation, and passkey-policy permissions. TAP additionally requires authentication-method policy and user authentication-method write permissions. External mode requests only the user/group reads needed to prove the supplied objects plus the workload permissions.
+The first tenant phase calculates the complete scope set required by the wizard choices and passes it once to the shared `graph-delegated-authentication` component. A delegated `CurrentUser` context is reused only when its tenant, Microsoft Graph cloud, administrator account, and scopes match and a harmless user read succeeds. If authentication is actually required, Microsoft Graph PowerShell uses its secured cache, Windows broker, or a normal browser. Later lifecycle phases run the same proof and normally reuse that context without another sign-in.
 
-If consent is missing, the deployment stops with the missing scopes instead of launching several new prompts. Device-code authentication, client secrets, and Azure CLI Graph tokens are not used.
+Managed-account setup requests user, group, role-management, Conditional Access, session-revocation, and passkey-policy permissions. TAP additionally requires authentication-method policy and user authentication-method write permissions. External mode requests only the user/group reads needed to prove the supplied objects plus the workload permissions.
 
-If choices change after the initial consent, copy the exact missing scopes from the error and refresh the normal cached/browser context explicitly:
+If an interactive deployment changes choices, the next run can request the new complete scope set in one normal broker/browser operation. A noninteractive run fails with the exact missing context properties instead of opening authentication. Device-code authentication, client secrets, and Azure CLI Graph tokens are not used.
+
+When Azure CLI uses workload identity federation, set the delegated administrator identity explicitly before the controller establishes the compatible persisted Graph context:
 
 ```powershell
-Connect-MgGraph -TenantId '<AZURE_TENANT_ID>' -Scopes '<scope1>','<scope2>'
+azd env set AZD_GRAPH_OPERATOR_UPN 'admin@contoso.example'
 ```
 
-Then rerun `azd up`. Do not add a device-code switch.
+For an interactive Azure CLI user, the account is derived automatically and an explicit value must match it. The component never disconnects an inherited session; interactive lifecycle hooks explicitly authorize replacing a mismatched context with the Azure-selected administrator.
+
+The exact component revision and hashes are recorded in `azd-components.lock.json`. Update it from `azd-reference`; do not edit `scripts/vendor/Azd.GraphAuthentication` locally.
 
 Runtime workloads use managed identity with `Policy.Read.All`, `Policy.ReadWrite.ConditionalAccess`, and `Application.Read.All`. `Application.Read.All` is included because Conditional Access PATCH currently requires that application permission in addition to the policy permissions.
 

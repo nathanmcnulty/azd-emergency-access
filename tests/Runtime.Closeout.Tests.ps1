@@ -6,9 +6,11 @@ Describe 'Runtime and teardown closeout guards' {
         $tenantCleanup = Get-Content "$PSScriptRoot\..\scripts\Remove-TenantObjects.ps1" -Raw
     }
 
-    It 'acquires the Graph teardown token in the deployment subscription' {
-        $preDown | Should -Match "-Resource 'https://graph\.microsoft\.com/'"
-        $preDown | Should -Match '-SubscriptionId \$env:AZURE_SUBSCRIPTION_ID'
+    It 'uses the proven shared Graph session for exact-owned application teardown' {
+        $preDown | Should -Match 'Connect-EmergencyAccessGraph'
+        $preDown | Should -Match "-Scopes @\('Application\.ReadWrite\.All'\)"
+        $preDown | Should -Match 'Remove-GraphResource'
+        $preDown | Should -Not -Match "-Resource 'https://graph\.microsoft\.com/'"
     }
 
     It 'fresh-reads, retries, skips non-user policies, and verifies Automation writes' {

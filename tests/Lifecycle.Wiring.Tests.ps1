@@ -17,6 +17,7 @@ Describe 'Lifecycle security wiring' {
             'sentinel-function.bicep'
         ) | ForEach-Object { Get-Content "$PSScriptRoot\..\infra\modes\$_" -Raw }
         $tenantGuards = Get-Content "$PSScriptRoot\..\scripts\Tenant.Guards.psm1" -Raw
+        $graphAuthentication = Get-Content "$PSScriptRoot\..\scripts\EmergencyAccess.GraphAuthentication.psm1" -Raw
         $logicApp = Get-Content "$PSScriptRoot\..\infra\modes\logicapp-scheduled.bicep" -Raw
         $sentinelBicep = Get-Content "$PSScriptRoot\..\infra\modes\sentinel-function.bicep" -Raw
         $remediation = Get-Content "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Raw
@@ -118,8 +119,8 @@ Describe 'Lifecycle security wiring' {
         $ca | Should -BeGreaterOrEqual 0
         $revoke | Should -BeGreaterThan $ca
         $roles | Should -BeGreaterThan $revoke
-        $bootstrap | Should -Match 'User\.RevokeSessions\.All'
-        $bootstrap | Should -Match 'UserAuthenticationMethod\.Read\.All'
+        $graphAuthentication | Should -Match 'User\.RevokeSessions\.All'
+        $graphAuthentication | Should -Match 'UserAuthenticationMethod\.Read\.All'
         $bootstrap | Should -Match 'authentication/fido2Methods'
         $bootstrap | Should -Match "passkeyType -eq 'deviceBound'"
         $bootstrap | Should -Match '\$allowedKeys\.Count -lt 2'
@@ -165,17 +166,16 @@ Describe 'Lifecycle security wiring' {
         $tenantGuards | Should -Match 'ExpectedTenantId -ne \$ActiveTenantId'
         $tenantGuards | Should -Match '\$active\.id -ne \[string\] \$env:AZURE_SUBSCRIPTION_ID'
         $bootstrap | Should -Match 'Assert-AzdTenantContext'
-        $bootstrap | Should -Match 'Connect-MgGraph'
-        $bootstrap | Should -Match '-TenantId \$env:AZURE_TENANT_ID'
-        $bootstrap | Should -Match 'Get-MgContext'
-        $bootstrap | Should -Match 'AZD_GRAPH_AUTH_INITIALIZED'
-        $bootstrap | Should -Match 'Connect-MgGraph -NoWelcome'
-        $bootstrap | Should -Match "\$Phase -ne 'Workload'"
-        $bootstrap | Should -Match 'No additional authentication request was started'
-        ([regex]::Matches($bootstrap, 'Connect-MgGraph[^\r\n]+-Scopes')).Count | Should -Be 1
-        $bootstrap | Should -Match 'Policy\.ReadWrite\.ConditionalAccess'
+        $bootstrap | Should -Match 'Connect-EmergencyAccessBootstrapGraph'
+        $bootstrap | Should -Not -Match 'Connect-MgGraph|Get-MgContext|AZD_GRAPH_AUTH_INITIALIZED'
+        $graphAuthentication | Should -Match 'Connect-AzdGraphSession'
+        $graphAuthentication | Should -Match 'Get-EmergencyAccessGraphOperatorContext'
+        $graphAuthentication | Should -Match 'AZD_GRAPH_OPERATOR_UPN'
+        $graphAuthentication | Should -Match "environmentName -ine 'AzureCloud'"
+        $graphAuthentication | Should -Match 'Policy\.ReadWrite\.ConditionalAccess'
+        ([regex]::Matches($graphAuthentication, 'Connect-AzdGraphSession')).Count | Should -Be 1
         $bootstrap | Should -Not -Match 'az account get-access-token'
-        $bootstrap | Should -Not -Match 'UseDeviceAuthentication'
+        ($bootstrap + $graphAuthentication) | Should -Not -Match 'UseDeviceAuthentication|UseDeviceCode|DeviceCodeCredential'
     }
 
     It 'refuses incremental deployment mode transitions' {
@@ -246,8 +246,13 @@ Describe 'Lifecycle security wiring' {
     }
 
     It 'pins validation dependencies and scopes the catalog token to one step' {
+        $validationWorkflow | Should -Match 'Install-Module Microsoft\.Graph\.Authentication -RequiredVersion 2\.38\.0'
         $validationWorkflow | Should -Match 'Install-Module Pester -RequiredVersion 5\.7\.1'
         $validationWorkflow | Should -Not -Match 'Install-Module Pester -MinimumVersion'
+        $graphInstallIndex = $validationWorkflow.IndexOf('Install-Module Microsoft.Graph.Authentication')
+        $pesterIndex = $validationWorkflow.IndexOf('Invoke-Pester')
+        $graphInstallIndex | Should -BeGreaterOrEqual 0
+        $pesterIndex | Should -BeGreaterThan $graphInstallIndex
         ([regex]::Matches($catalogWorkflow, 'GH_TOKEN:')).Count | Should -Be 1
         $catalogWorkflow | Should -Match 'GH_TOKEN: \$\{\{ secrets\.AZD_CATALOG_TOKEN \}\}'
         Test-Path "$PSScriptRoot\..\.github\dependabot.yml" | Should -BeTrue
@@ -271,17 +276,23 @@ Describe 'Lifecycle security wiring' {
         $cleanup | Should -Match 'all removed Conditional Access exclusions were restored'
         $cleanup | Should -Match '\$attempt -le 4 -and \$groupState -eq ''unknown'''
         $cleanup | Should -Match 'rollback was attempted for every recorded policy change'
-        $cleanup | Should -Match 'Connect-MgGraph'
+        $cleanup | Should -Match 'Connect-EmergencyAccessGraph'
         $cleanup | Should -Match 'AZD_OWNED_EMERGENCY_USER3_ID'
         $cleanup | Should -Match 'AZD_ADOPTED_EMERGENCY_GROUP_MEMBERSHIP_HASH'
         $cleanup | Should -Match 'AZD_EMERGENCY_GROUP_MEMBER_COUNT'
         $cleanup | Should -Match 'AZD_SECURITY_KEY_DRILL_FINGERPRINT'
         $cleanup | Should -Match 'function Remove-TapGroupReference'
-        $cleanup | Should -Match 'Policy\.ReadWrite\.AuthenticationMethod'
-        $cleanup | Should -Match 'Connect-MgGraph -NoWelcome'
-        $cleanup | Should -Not -Match 'Connect-MgGraph[\s\S]{0,150}-Scopes'
+        $cleanup | Should -Match 'if \(\$env:AZD_OWNED_EMERGENCY_GROUP_ID\) \{[\s\S]+\$requiredScopes \+= ''Policy\.ReadWrite\.AuthenticationMethod'''
+        $tapScopeIndex = $cleanup.IndexOf("`$requiredScopes += 'Policy.ReadWrite.AuthenticationMethod'")
+        $cleanupConnectIndex = $cleanup.IndexOf('Connect-EmergencyAccessGraph')
+        $tapScopeIndex | Should -BeGreaterOrEqual 0
+        $cleanupConnectIndex | Should -BeGreaterThan $tapScopeIndex
+        $cleanup | Should -Not -Match 'Connect-MgGraph'
         $cleanup | Should -Not -Match 'az account get-access-token'
-        $cleanup | Should -Not -Match 'UseDeviceAuthentication'
+        $cleanup | Should -Not -Match 'UseDeviceAuthentication|UseDeviceCode|DeviceCodeCredential'
+        $preDown | Should -Match 'Connect-EmergencyAccessGraph'
+        $preDown | Should -Match 'Remove-GraphResource'
+        $preDown | Should -Not -Match "-Resource 'https://graph.microsoft.com/'"
     }
 
     It 'fails closed when Sentinel Function authentication is absent' {
@@ -320,6 +331,35 @@ Describe 'Tenant guards' {
                     return '{"id":"22222222-2222-4222-8222-222222222222","tenantId":"33333333-3333-4333-8333-333333333333"}'
                 }
                 { Assert-AzdTenantContext } | Should -Throw '*Azure subscription mismatch*'
+            }
+            finally {
+                $env:AZURE_SUBSCRIPTION_ID = $oldSubscription
+                $env:AZURE_TENANT_ID = $oldTenant
+            }
+        }
+    }
+
+    It 'returns the validated active cloud and user context only when requested' {
+        InModuleScope Tenant.Guards {
+            $oldSubscription = $env:AZURE_SUBSCRIPTION_ID
+            $oldTenant = $env:AZURE_TENANT_ID
+            try {
+                $env:AZURE_SUBSCRIPTION_ID = '11111111-1111-4111-8111-111111111111'
+                $env:AZURE_TENANT_ID = '33333333-3333-4333-8333-333333333333'
+                $script:tenantGuardAzCallCount = 0
+                Mock az {
+                    $global:LASTEXITCODE = 0
+                    $script:tenantGuardAzCallCount++
+                    if ($script:tenantGuardAzCallCount -eq 1) {
+                        return '{"id":"11111111-1111-4111-8111-111111111111","tenantId":"33333333-3333-4333-8333-333333333333"}'
+                    }
+                    return '{"id":"11111111-1111-4111-8111-111111111111","tenantId":"33333333-3333-4333-8333-333333333333","environmentName":"AzureCloud","user":{"type":"user","name":"admin@example.com"}}'
+                }
+
+                $result = Assert-AzdTenantContext -PassThru
+
+                $result.environmentName | Should -Be 'AzureCloud'
+                $result.user.name | Should -Be 'admin@example.com'
             }
             finally {
                 $env:AZURE_SUBSCRIPTION_ID = $oldSubscription

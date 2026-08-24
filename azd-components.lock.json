@@ -23,6 +23,24 @@
           "sha256": "f219f008bb04a2eed5230a623191a8caff5363b319d02cbd8c9dd0e239848828"
         }
       ]
+    },
+    {
+      "id": "graph-delegated-authentication",
+      "version": "0.1.0",
+      "sourceRepository": "https://github.com/nathanmcnulty/azd-reference",
+      "sourceRevision": "6914d6b9382aca33cae5089b1d73f235cb1319a1",
+      "files": [
+        {
+          "source": "components/powershell/graph-delegated-authentication/Azd.GraphAuthentication.psd1",
+          "target": "scripts/vendor/Azd.GraphAuthentication/Azd.GraphAuthentication.psd1",
+          "sha256": "49bdbb19b5c42422c8d02836de6ba1204906a539ca0f900f46d5cf5c1b3ab9ab"
+        },
+        {
+          "source": "components/powershell/graph-delegated-authentication/Azd.GraphAuthentication.psm1",
+          "target": "scripts/vendor/Azd.GraphAuthentication/Azd.GraphAuthentication.psm1",
+          "sha256": "f727f0680a6f11be057d5a0993c6fec9917d7de8870685427a5ec8ca4d739b5e"
+        }
+      ]
     }
   ]
 }

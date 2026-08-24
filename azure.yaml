@@ -28,5 +28,5 @@ hooks:
   predown:
     shell: pwsh
     run: ./scripts/Pre-Down.ps1
-    interactive: false
+    interactive: true
     continueOnError: false

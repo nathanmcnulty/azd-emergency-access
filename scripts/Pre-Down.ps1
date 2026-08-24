@@ -4,6 +4,7 @@ param()
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot\Cleanup.Guards.psm1" -Force
 Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
+Import-Module "$PSScriptRoot\EmergencyAccess.GraphAuthentication.psm1" -Force
 Assert-AzdTenantContext
 
 function Get-AccessToken {
@@ -29,6 +30,27 @@ function Remove-RestResource {
     }
     catch {
         if ([int]$_.Exception.Response.StatusCode -ne 404) {
+            throw
+        }
+    }
+}
+
+function Remove-GraphResource {
+    param([Parameter(Mandatory)][string] $Uri)
+
+    try {
+        Invoke-MgGraphRequest -Method DELETE -Uri $Uri -ErrorAction Stop | Out-Null
+    }
+    catch {
+        $responseProperty = $_.Exception.PSObject.Properties['Response']
+        $response = if ($responseProperty) { $responseProperty.Value } else { $null }
+        $statusCode = if ($response -and $response.PSObject.Properties['StatusCode']) {
+            [int] $response.StatusCode
+        }
+        else {
+            0
+        }
+        if ($statusCode -ne 404) {
             throw
         }
     }
@@ -154,10 +176,14 @@ if ($ownedClientId) {
         throw 'Function authentication application ownership record is invalid; refusing deletion.'
     }
 
-    $graphToken = Get-AccessToken `
-        -Resource 'https://graph.microsoft.com/' `
-        -SubscriptionId $env:AZURE_SUBSCRIPTION_ID
-    $graphHeaders = @{ Authorization = "Bearer $graphToken" }
+    $allowInteractiveGraph = -not (
+        $env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected
+    )
+    Connect-EmergencyAccessGraph `
+        -Scopes @('Application.ReadWrite.All') `
+        -ProbeUri '/v1.0/applications?$top=1&$select=id' `
+        -AllowInteractive:$allowInteractiveGraph `
+        -AllowContextReplacement:$allowInteractiveGraph | Out-Null
     if ($env:AZD_OWNED_FUNCTION_AUTH_SERVICE_PRINCIPAL_ID) {
         $parsedServicePrincipalId = [guid]::Empty
         if (-not [guid]::TryParse(
@@ -166,13 +192,11 @@ if ($ownedClientId) {
         )) {
             throw 'Function authentication service-principal ownership record is invalid; refusing deletion.'
         }
-        Remove-RestResource `
-            -Uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($env:AZD_OWNED_FUNCTION_AUTH_SERVICE_PRINCIPAL_ID)" `
-            -Headers $graphHeaders
+        Remove-GraphResource `
+            -Uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($env:AZD_OWNED_FUNCTION_AUTH_SERVICE_PRINCIPAL_ID)"
     }
-    Remove-RestResource `
-        -Uri "https://graph.microsoft.com/v1.0/applications/$applicationObjectId" `
-        -Headers $graphHeaders
+    Remove-GraphResource `
+        -Uri "https://graph.microsoft.com/v1.0/applications/$applicationObjectId"
 
     foreach ($name in @(
         'AZD_FUNCTION_AUTH_CLIENT_ID',
@@ -185,7 +209,6 @@ if ($ownedClientId) {
     )) {
         Clear-AzdEnvironmentValue $name
     }
-    $graphToken = $null
 }
 
 Clear-AzdEnvironmentValue 'AZD_PROVISIONED_MODE'
