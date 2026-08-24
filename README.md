@@ -32,7 +32,7 @@ Use an administrator who can deploy Azure resources, create role assignments, pr
 
 Email and Teams alerting require Entra `SigninLogs` and `AuditLogs` to already flow to Log Analytics or Microsoft Sentinel. The wizard lets you configure alerting later if those prerequisites are not ready.
 
-`azd up` reuses the existing `azd`, Azure CLI, and Microsoft Graph caches. When a cache is missing, the normal operating-system or browser sign-in opens once. No device-code flow is used.
+`azd up` reuses the existing `azd`, Azure CLI, and Microsoft Graph caches. The Graph context must match the Azure-selected tenant and administrator, contain the complete scopes for the chosen features, and pass a read-only probe. When authentication is needed, the normal operating-system broker or browser opens at most once per hook. No device-code flow or Azure CLI Graph token is used.
 
 ### Deploy
 

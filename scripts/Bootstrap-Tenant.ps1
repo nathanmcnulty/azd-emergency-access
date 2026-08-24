@@ -7,73 +7,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $graphRoot = 'https://graph.microsoft.com'
 Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
+Import-Module "$PSScriptRoot\EmergencyAccess.GraphAuthentication.psm1" -Force
 Import-Module "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Force
 Assert-AzdTenantContext
 
 function Test-Interactive {
     return -not ($env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected)
-}
-
-function Connect-ProjectGraph {
-    if (-not (Get-Command Connect-MgGraph -ErrorAction SilentlyContinue)) {
-        throw "Microsoft.Graph.Authentication is required. Install it with 'Install-Module Microsoft.Graph.Authentication -Scope CurrentUser', then run 'azd up' again."
-    }
-    $scopes = [Collections.Generic.List[string]]::new()
-    if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
-        @(
-            'User.ReadWrite.All',
-            'Group.ReadWrite.All',
-            'AdministrativeUnit.ReadWrite.All',
-            'RoleManagement.ReadWrite.Directory',
-            'User.RevokeSessions.All'
-        ) | ForEach-Object { $scopes.Add($_) }
-    }
-    else {
-        $scopes.Add('User.Read.All')
-        $scopes.Add('Group.Read.All')
-    }
-    @(
-        'Application.Read.All',
-        'AppRoleAssignment.ReadWrite.All',
-        'Policy.ReadWrite.ConditionalAccess'
-    ) | ForEach-Object { $scopes.Add($_) }
-    if ($env:AZD_DEPLOYMENT_MODE -eq 'sentinel-function') {
-        $scopes.Add('Application.ReadWrite.All')
-    }
-    if ($env:AZD_ENABLE_TAP_POLICY -eq 'true') {
-        $scopes.Add('Policy.ReadWrite.AuthenticationMethod')
-        $scopes.Add('UserAuthenticationMethod.ReadWrite.All')
-    }
-    elseif ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
-        $scopes.Add('Policy.Read.AuthenticationMethod')
-        $scopes.Add('UserAuthenticationMethod.Read.All')
-    }
-    $requiredScopes = @($scopes | Select-Object -Unique)
-    $authenticationInitialized = $env:AZD_GRAPH_AUTH_INITIALIZED -eq 'true'
-    $initializeAuthentication = -not $authenticationInitialized -and $Phase -ne 'Workload'
-
-    try {
-        if ($initializeAuthentication) {
-            Connect-MgGraph -TenantId $env:AZURE_TENANT_ID -Scopes $requiredScopes -NoWelcome | Out-Null
-        }
-        else {
-            Connect-MgGraph -NoWelcome | Out-Null
-        }
-    }
-    catch {
-        throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"
-    }
-    $context = Get-MgContext
-    if (-not $context -or $context.TenantId -ne $env:AZURE_TENANT_ID) {
-        throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
-    }
-    $missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
-    if ($missingScopes.Count -gt 0) {
-        throw "The cached Microsoft Graph context is missing required delegated scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry. No additional authentication request was started."
-    }
-    if ($initializeAuthentication) {
-        Set-AzdValue AZD_GRAPH_AUTH_INITIALIZED 'true'
-    }
 }
 
 function Invoke-Graph {
@@ -860,7 +799,10 @@ function Invoke-EmergencySecurityKeyDrill {
     return $true
 }
 
-Connect-ProjectGraph
+$allowInteractiveGraph = Test-Interactive
+Connect-EmergencyAccessBootstrapGraph `
+    -AllowInteractive:$allowInteractiveGraph `
+    -AllowContextReplacement:$allowInteractiveGraph | Out-Null
 if ($Phase -in 'All', 'Identities') {
     if ($env:AZD_MANAGE_EMERGENCY_IDENTITIES -eq 'true') {
         $users = @(

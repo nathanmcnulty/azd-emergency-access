@@ -7,36 +7,36 @@ param(
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot\Cleanup.Guards.psm1" -Force
 Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
+Import-Module "$PSScriptRoot\EmergencyAccess.GraphAuthentication.psm1" -Force
 Import-Module "$PSScriptRoot\..\src\functions\shared\EmergencyAccess.Remediation.psm1" -Force
 Assert-AzdTenantContext
 if (-not $DeleteObjectsCreatedByThisEnvironment) {
     throw 'Use -DeleteObjectsCreatedByThisEnvironment to acknowledge tenant-object deletion.'
 }
 
-try {
-    Connect-MgGraph -NoWelcome | Out-Null
-}
-catch {
-    throw "Unable to authenticate to Microsoft Graph with the standard cached/WAM/browser flow. $($_.Exception.Message)"
-}
-$context = Get-MgContext
-if (-not $context -or $context.TenantId -ne $env:AZURE_TENANT_ID) {
-    throw "Microsoft Graph tenant context mismatch. Expected '$($env:AZURE_TENANT_ID)', received '$($context.TenantId)'."
-}
 $requiredScopes = @(
     'User.ReadWrite.All',
     'Group.ReadWrite.All',
     'AdministrativeUnit.ReadWrite.All',
     'Policy.ReadWrite.ConditionalAccess'
 )
-$missingScopes = @($requiredScopes | Where-Object { $_ -notin $context.Scopes })
+$allowInteractiveGraph = -not (
+    $env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected
+)
+Connect-EmergencyAccessGraph `
+    -Scopes $requiredScopes `
+    -ProbeUri '/v1.0/users?$top=1&$select=id' `
+    -AllowInteractive:$allowInteractiveGraph `
+    -AllowContextReplacement:$allowInteractiveGraph | Out-Null
+$context = Get-MgContext
+$missingScopes = @()
 if ($env:AZD_OWNED_EMERGENCY_GROUP_ID -and
     'Policy.Read.AuthenticationMethod' -notin $context.Scopes -and
     'Policy.ReadWrite.AuthenticationMethod' -notin $context.Scopes) {
     $missingScopes += 'Policy.Read.AuthenticationMethod (or Policy.ReadWrite.AuthenticationMethod)'
 }
 if ($missingScopes.Count -gt 0) {
-    throw "The cached Microsoft Graph context is missing cleanup scopes: $($missingScopes -join ', '). Run the documented one-time Connect-MgGraph initialization, then retry."
+    throw "The proven Microsoft Graph context is missing cleanup scopes: $($missingScopes -join ', '). Refresh the normal cached/browser context, then retry."
 }
 
 function Invoke-CleanupGraphRequest {
@@ -195,7 +195,7 @@ function Remove-TapGroupReference {
         return
     }
     if ('Policy.ReadWrite.AuthenticationMethod' -notin $context.Scopes) {
-        throw "The owned emergency group is still targeted by the Temporary Access Pass policy, but the cached Microsoft Graph context lacks Policy.ReadWrite.AuthenticationMethod. Refresh the documented normal Connect-MgGraph context, then retry cleanup."
+        throw 'The owned emergency group is still targeted by the Temporary Access Pass policy, but the proven Microsoft Graph context lacks Policy.ReadWrite.AuthenticationMethod. Refresh the normal cached/browser context, then retry cleanup.'
     }
     $remainingTargets = @($configuration.includeTargets) | Where-Object { $_.id -ne $GroupId }
     # Record intent before PATCH so an ambiguous transport failure is also rolled back.

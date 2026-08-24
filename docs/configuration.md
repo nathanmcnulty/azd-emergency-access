@@ -23,6 +23,7 @@ The interactive wizard persists its choices in the current azd environment. Adva
 | `AZD_USE_RESTRICTED_AU` | `true` | Create or reuse a restricted management administrative unit |
 | `AZD_ENABLE_TAP_POLICY` | `false` outside the wizard | Configure TAP and create interactive passes |
 | `AZD_RESOURCE_NAME_PREFIX` | environment-derived | Optional deterministic Azure resource prefix |
+| `AZD_GRAPH_OPERATOR_UPN` | Azure CLI user | Expected delegated Graph administrator; required when Azure CLI uses a non-user identity |
 
 ## Scheduling
 
@@ -87,6 +88,6 @@ azd provision --preview
 azd up
 ```
 
-For CI or another controller, set `AZD_NON_INTERACTIVE=true`, set `AZD_DEPLOYMENT_MODE` and every required value, authenticate Azure using workload identity federation, and establish one compatible standard `Connect-MgGraph` delegated context before hooks run. TAP values are never emitted noninteractively, and every managed emergency account must already have two device-bound FIDO2 security keys.
+For CI or another controller, set `AZD_NON_INTERACTIVE=true`, `AZD_GRAPH_OPERATOR_UPN`, `AZD_DEPLOYMENT_MODE`, and every required value; authenticate Azure using workload identity federation; and establish one compatible delegated `CurrentUser` Microsoft Graph context before hooks run. Noninteractive hooks only inspect and probe that context and never open authentication. TAP values are never emitted noninteractively, and every managed emergency account must already have two device-bound FIDO2 security keys.
 
 The graphical wizard should write these same environment values and then invoke the existing azd lifecycle. It should not create a separate deployment contract.
