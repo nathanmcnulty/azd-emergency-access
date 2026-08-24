@@ -1,7 +1,17 @@
 BeforeAll {
     $script:repoRoot = Split-Path $PSScriptRoot -Parent
+    if (-not (Get-Command azd -ErrorAction SilentlyContinue)) {
+        function global:azd { throw 'The azd test shim must be mocked before use.' }
+        $script:removeAzdTestShim = $true
+    }
     Import-Module (Join-Path $repoRoot 'scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1') -Force
     Import-Module (Join-Path $repoRoot 'scripts/Deployment.Validation.psm1') -Force
+}
+
+AfterAll {
+    if ($script:removeAzdTestShim) {
+        Remove-Item Function:\global:azd -ErrorAction SilentlyContinue
+    }
 }
 
 Describe 'Portfolio deployment validation' {

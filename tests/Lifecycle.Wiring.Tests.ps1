@@ -292,7 +292,17 @@ Describe 'Lifecycle security wiring' {
 
 Describe 'Tenant guards' {
     BeforeAll {
+        if (-not (Get-Command azd -ErrorAction SilentlyContinue)) {
+            function global:azd { throw 'The azd test shim must be mocked before use.' }
+            $script:removeAzdTestShim = $true
+        }
         Import-Module "$PSScriptRoot\..\scripts\Tenant.Guards.psm1" -Force
+    }
+
+    AfterAll {
+        if ($script:removeAzdTestShim) {
+            Remove-Item Function:\global:azd -ErrorAction SilentlyContinue
+        }
     }
 
     It 'permits one exact tenant across environment subscription and active context' {
@@ -310,8 +320,10 @@ Describe 'Tenant guards' {
             try {
                 $env:AZURE_SUBSCRIPTION_ID = '11111111-1111-4111-8111-111111111111'
                 $env:AZURE_TENANT_ID = '33333333-3333-4333-8333-333333333333'
+                $script:tenantGuardAzCallCount = 0
                 Mock az {
-                    if ($args -contains '--subscription') {
+                    $script:tenantGuardAzCallCount++
+                    if ($script:tenantGuardAzCallCount -eq 1) {
                         return '{"id":"11111111-1111-4111-8111-111111111111","tenantId":"33333333-3333-4333-8333-333333333333"}'
                     }
                     return '{"id":"22222222-2222-4222-8222-222222222222","tenantId":"33333333-3333-4333-8333-333333333333"}'
