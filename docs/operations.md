@@ -4,6 +4,19 @@
 
 ## Verify a deployment
 
+Run the standard validation interface before the manual drills below:
+
+```powershell
+./scripts/Test-Deployment.ps1
+./scripts/Test-Deployment.ps1 -TestDelivery
+```
+
+The first command performs read-only checks and bounded negative authentication
+probes. The second explicitly authorizes one labeled Sentinel notification test.
+Use `-Plan` to write the nine-check plan without authentication, cloud requests,
+HTTP probes, or delivery. Reports are schema-validated, redacted, and written to
+the ignored `reports/deployment-validation.json` path.
+
 1. Confirm both emergency accounts can sign in with their registered passkeys.
 2. Confirm the emergency group is excluded from every applicable Conditional Access policy.
 3. Use an approved report-only test policy to prove remediation and idempotency.

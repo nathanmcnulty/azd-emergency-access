@@ -24,16 +24,46 @@ function Assert-AzdTenantContext {
     if (-not $env:AZURE_SUBSCRIPTION_ID -or -not $env:AZURE_TENANT_ID) {
         throw 'AZURE_SUBSCRIPTION_ID and AZURE_TENANT_ID are required before Microsoft Graph operations.'
     }
-    $subscriptionTenant = & az account show --subscription $env:AZURE_SUBSCRIPTION_ID --query tenantId -o tsv
-    if ($LASTEXITCODE -ne 0 -or -not $subscriptionTenant) {
+    $subscriptionJson = & az account show --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --query '{id:id,tenantId:tenantId}' --output json --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $subscriptionJson) {
         throw "Unable to resolve the tenant for subscription '$($env:AZURE_SUBSCRIPTION_ID)'."
     }
-    $activeTenant = & az account show --query tenantId -o tsv
-    if ($LASTEXITCODE -ne 0 -or -not $activeTenant) {
+    $subscription = $subscriptionJson | ConvertFrom-Json
+    $activeJson = & az account show --query '{id:id,tenantId:tenantId}' --output json --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or -not $activeJson) {
         throw 'Unable to resolve the active Azure CLI tenant.'
     }
+    $active = $activeJson | ConvertFrom-Json
     Assert-TenantMatch -ExpectedTenantId $env:AZURE_TENANT_ID `
-        -SubscriptionTenantId $subscriptionTenant.Trim() -ActiveTenantId $activeTenant.Trim()
+        -SubscriptionTenantId ([string] $subscription.tenantId) -ActiveTenantId ([string] $active.tenantId)
+    if ([string] $active.id -ne [string] $env:AZURE_SUBSCRIPTION_ID) {
+        throw "Azure subscription mismatch. The azd environment expects '$($env:AZURE_SUBSCRIPTION_ID)' but Azure CLI is active in '$($active.id)'."
+    }
 }
 
-Export-ModuleMember -Function Assert-TenantMatch, Assert-AzdTenantContext
+function Invoke-AzdEnvironmentValueRead {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Name)
+
+    if (-not (Get-Command azd -ErrorAction SilentlyContinue)) { return $null }
+    $value = & azd env get-value $Name 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($value -join "`n").Trim()
+}
+
+function Get-AzdEnvironmentValue {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Name)
+
+    $processValue = [Environment]::GetEnvironmentVariable($Name)
+    if ($null -ne $processValue -and $processValue -ne '') { return $processValue }
+    $value = Invoke-AzdEnvironmentValueRead -Name $Name
+    if ($value) {
+        [Environment]::SetEnvironmentVariable($Name, $value, 'Process')
+        return $value
+    }
+    return $null
+}
+
+Export-ModuleMember -Function Assert-TenantMatch, Assert-AzdTenantContext, Get-AzdEnvironmentValue

@@ -342,14 +342,7 @@ if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true' -and
         }
         Write-Host 'Teams connection authorized; the Sentinel notification playbook is enabled.'
         if ($script:TeamsAuthorizationPerformed -or $env:AZD_SENTINEL_TEAMS_AUTHORIZED -ne 'true') {
-            $previousSmokeTest = $env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY
-            try {
-                $env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY = 'true'
-                & "$PSScriptRoot\Test-Deployment.ps1"
-            }
-            finally {
-                $env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY = $previousSmokeTest
-            }
+            & "$PSScriptRoot\Test-Deployment.ps1" -TestDelivery
             & azd env set AZD_SENTINEL_TEAMS_AUTHORIZED true | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw 'Teams delivery succeeded, but its validation record could not be persisted.'

@@ -4,4 +4,6 @@ local.settings.json
 *.log
 *.zip
 TestResults/
+reports/
+testResults.xml
 

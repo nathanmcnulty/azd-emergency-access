@@ -57,7 +57,6 @@ The interactive wizard persists its choices in the current azd environment. Adva
 | `AZD_SENTINEL_TEAMS_WEBHOOK_URL` | Secret callback URL for webhook mode |
 | `AZD_SENTINEL_TEAMS_CONNECTION_RESOURCE_ID` | Existing Teams API connection for API-connection mode |
 | `AZD_SENTINEL_TEAMS_TEAM_ID`, `AZD_SENTINEL_TEAMS_CHANNEL_ID` | Explicit destination IDs |
-| `AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY` | Post and verify one labeled test notification |
 | `AZD_SENTINEL_OUTLOOK_CONNECTION_RESOURCE_ID` | Existing Outlook API connection for optional email |
 | `AZD_SENTINEL_NOTIFICATION_EMAIL` | Recipient used with the Outlook connection |
 

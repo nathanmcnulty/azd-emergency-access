@@ -221,7 +221,6 @@ Set-AzdDefault AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT 'false'
 Set-AzdDefault AZD_ENABLE_TAP_POLICY 'false'
 Set-AzdDefault AZD_ENABLE_SIGNIN_ALERTS 'false'
 Set-AzdDefault AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS 'false'
-Set-AzdDefault AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY 'false'
 Set-AzdDefault AZD_SENTINEL_TEAMS_DELIVERY_MODE 'admin-configured'
 if (-not $env:AZD_AUTOMATION_START_TIME) {
     Set-AzdDefault AZD_AUTOMATION_START_TIME (
@@ -419,20 +418,11 @@ if ($env:AZD_DEPLOYMENT_MODE -eq 'automation-scheduled') {
     }
 }
 
-foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS', 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY') {
+foreach ($booleanName in 'AZD_MANAGE_EMERGENCY_IDENTITIES', 'AZD_USE_RESTRICTED_AU', 'AZD_ENABLE_LIMITED_EMERGENCY_ACCOUNT', 'AZD_ENABLE_TAP_POLICY', 'AZD_ENABLE_SIGNIN_ALERTS', 'AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS') {
     $value = [Environment]::GetEnvironmentVariable($booleanName)
     if ($value -notin 'true', 'false') {
         throw "$booleanName must be 'true' or 'false'."
     }
-}
-
-if ($env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY -eq 'true' -and
-    $env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -ne 'true') {
-    throw 'AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY requires AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS=true.'
-}
-if ($env:AZD_TEST_SENTINEL_NOTIFICATION_DELIVERY -eq 'true' -and
-    $env:AZD_SENTINEL_TEAMS_DELIVERY_MODE -eq 'admin-configured') {
-    throw 'Notification delivery cannot be tested while the admin-configured playbook is intentionally disabled.'
 }
 
 if ($env:AZD_ENABLE_SENTINEL_ACTIVITY_ALERTS -eq 'true') {
