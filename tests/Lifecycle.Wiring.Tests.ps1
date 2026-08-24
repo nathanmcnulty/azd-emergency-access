@@ -246,8 +246,13 @@ Describe 'Lifecycle security wiring' {
     }
 
     It 'pins validation dependencies and scopes the catalog token to one step' {
+        $validationWorkflow | Should -Match 'Install-Module Microsoft\.Graph\.Authentication -RequiredVersion 2\.38\.0'
         $validationWorkflow | Should -Match 'Install-Module Pester -RequiredVersion 5\.7\.1'
         $validationWorkflow | Should -Not -Match 'Install-Module Pester -MinimumVersion'
+        $graphInstallIndex = $validationWorkflow.IndexOf('Install-Module Microsoft.Graph.Authentication')
+        $pesterIndex = $validationWorkflow.IndexOf('Invoke-Pester')
+        $graphInstallIndex | Should -BeGreaterOrEqual 0
+        $pesterIndex | Should -BeGreaterThan $graphInstallIndex
         ([regex]::Matches($catalogWorkflow, 'GH_TOKEN:')).Count | Should -Be 1
         $catalogWorkflow | Should -Match 'GH_TOKEN: \$\{\{ secrets\.AZD_CATALOG_TOKEN \}\}'
         Test-Path "$PSScriptRoot\..\.github\dependabot.yml" | Should -BeTrue
@@ -277,7 +282,11 @@ Describe 'Lifecycle security wiring' {
         $cleanup | Should -Match 'AZD_EMERGENCY_GROUP_MEMBER_COUNT'
         $cleanup | Should -Match 'AZD_SECURITY_KEY_DRILL_FINGERPRINT'
         $cleanup | Should -Match 'function Remove-TapGroupReference'
-        $cleanup | Should -Match 'Policy\.ReadWrite\.AuthenticationMethod'
+        $cleanup | Should -Match 'if \(\$env:AZD_OWNED_EMERGENCY_GROUP_ID\) \{[\s\S]+\$requiredScopes \+= ''Policy\.ReadWrite\.AuthenticationMethod'''
+        $tapScopeIndex = $cleanup.IndexOf("`$requiredScopes += 'Policy.ReadWrite.AuthenticationMethod'")
+        $cleanupConnectIndex = $cleanup.IndexOf('Connect-EmergencyAccessGraph')
+        $tapScopeIndex | Should -BeGreaterOrEqual 0
+        $cleanupConnectIndex | Should -BeGreaterThan $tapScopeIndex
         $cleanup | Should -Not -Match 'Connect-MgGraph'
         $cleanup | Should -Not -Match 'az account get-access-token'
         $cleanup | Should -Not -Match 'UseDeviceAuthentication|UseDeviceCode|DeviceCodeCredential'

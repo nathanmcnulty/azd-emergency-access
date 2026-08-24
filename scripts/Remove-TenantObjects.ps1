@@ -20,6 +20,9 @@ $requiredScopes = @(
     'AdministrativeUnit.ReadWrite.All',
     'Policy.ReadWrite.ConditionalAccess'
 )
+if ($env:AZD_OWNED_EMERGENCY_GROUP_ID) {
+    $requiredScopes += 'Policy.ReadWrite.AuthenticationMethod'
+}
 $allowInteractiveGraph = -not (
     $env:CI -or $env:AZD_NON_INTERACTIVE -eq 'true' -or [Console]::IsInputRedirected
 )
