@@ -13,9 +13,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-azd-catalog-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   notify-catalog:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       HAS_CATALOG_TOKEN: ${{ secrets.AZD_CATALOG_TOKEN != '' }}
     steps:
