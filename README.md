@@ -39,6 +39,12 @@ Email and Teams alerting require Entra `SigninLogs` and `AuditLogs` to already f
 Run:
 
 ```powershell
+azd init -t nathanmcnulty/azd-emergency-access && azd up
+```
+
+For a reproducible pinned release, use the equivalent two-step form:
+
+```powershell
 azd init --template nathanmcnulty/azd-emergency-access --branch v1.0.0
 azd up
 ```
