@@ -1,5 +1,6 @@
 {
   "manifestVersion": "1.0",
+  "baseline": "2026.08",
   "components": [
     {
       "id": "deployment-validation",
