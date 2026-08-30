@@ -1,6 +1,6 @@
 @{
     RootModule = 'Azd.GraphAuthentication.psm1'
-    ModuleVersion = '0.1.0'
+    ModuleVersion = '0.1.1'
     GUID = 'ac65e94a-6112-4ff8-820d-9ed639c8dc3e'
     Author = 'Nathan McNulty'
     CompanyName = 'Community'

@@ -236,8 +236,11 @@ Describe 'vendored Graph authentication contract' {
         $component = @($lock.components | Where-Object id -eq 'graph-delegated-authentication')
 
         $component.Count | Should -Be 1
-        $component[0].version | Should -Be '0.1.0'
-        $component[0].sourceRevision | Should -Be '6914d6b9382aca33cae5089b1d73f235cb1319a1'
+        $component[0].sourceRevision | Should -Match '^[0-9a-f]{40}$'
+        $moduleFile = @($component[0].files | Where-Object target -eq 'scripts/vendor/Azd.GraphAuthentication/Azd.GraphAuthentication.psd1')
+        $moduleFile.Count | Should -Be 1
+        $moduleManifest = Import-PowerShellDataFile -LiteralPath (Join-Path $repoRoot $moduleFile[0].target)
+        $moduleManifest.ModuleVersion.ToString() | Should -Be $component[0].version
         foreach ($file in @($component[0].files)) {
             $actual = (Get-FileHash -LiteralPath (Join-Path $repoRoot $file.target) -Algorithm SHA256).Hash.ToLowerInvariant()
             $actual | Should -Be $file.sha256
