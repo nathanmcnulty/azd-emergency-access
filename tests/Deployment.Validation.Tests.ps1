@@ -217,13 +217,16 @@ Describe 'Portfolio deployment validation' {
         }
     }
 
-    It 'matches every vendored file to deployment-validation 0.3.2' {
+    It 'matches the deployment-validation lock, module manifest, and file hashes' {
         $lock = Get-Content (Join-Path $repoRoot 'azd-components.lock.json') -Raw | ConvertFrom-Json
         $component = @($lock.components | Where-Object id -eq 'deployment-validation')
 
         $component.Count | Should -Be 1
-        $component[0].version | Should -Be '0.3.2'
         $component[0].sourceRevision | Should -Match '^[0-9a-f]{40}$'
+        $moduleFile = @($component[0].files | Where-Object target -eq 'scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1')
+        $moduleFile.Count | Should -Be 1
+        $moduleManifest = Import-PowerShellDataFile -LiteralPath (Join-Path $repoRoot $moduleFile[0].target)
+        $moduleManifest.ModuleVersion.ToString() | Should -Be $component[0].version
         foreach ($file in $component[0].files) {
             $actual = (Get-FileHash -LiteralPath (Join-Path $repoRoot $file.target) -Algorithm SHA256).Hash.ToLowerInvariant()
             $actual | Should -Be $file.sha256
