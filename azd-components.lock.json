@@ -4,14 +4,14 @@
   "components": [
     {
       "id": "deployment-validation",
-      "version": "0.3.3",
+      "version": "1.0.0",
       "sourceRepository": "https://github.com/nathanmcnulty/azd-reference",
-      "sourceRevision": "bc2cf2aad4ff5ebadabe8fd0f0efcf71d94d0e0f",
+      "sourceRevision": "ef60904fa3aa3dee81f36ba7bfed0eed18f72276",
       "files": [
         {
           "source": "components/powershell/deployment-validation/Azd.DeploymentValidation.psd1",
           "target": "scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1",
-          "sha256": "8e1b19232570582da7ca8f92fee529f2d93efa6c57fb6fdfe5dbb0d2a0771978"
+          "sha256": "0d7fa90bf122aa3258a88eb751fdfd8e88321299f1767e9778c759b44e44e9ff"
         },
         {
           "source": "components/powershell/deployment-validation/Azd.DeploymentValidation.psm1",
