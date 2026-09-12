@@ -28,10 +28,12 @@ Global Administrator is the simplest end-to-end deploying role. A least-privileg
 - Conditional Access Administrator for immediate policy reconciliation;
 - Authentication Policy Administrator when TAP policy targeting is changed;
 - Authentication Administrator for authentication-method operations on nonadministrators, or Privileged Authentication Administrator when an existing emergency account is already privileged;
-- permission to grant the delegated Microsoft Graph scopes requested for the selected capabilities;
+- a separate Graph consent authority for the delegated Microsoft Graph scopes requested for the selected capabilities; use a **Global Administrator or Privileged Role Administrator** for Graph API consent in this workflow;
 - access to the existing Log Analytics or Sentinel workspace when alerting is selected.
 
 Activate eligible roles before `azd up`. Azure RBAC does not grant Microsoft Entra or Microsoft Graph privileges.
+
+The feature roles above do not grant Graph consent. The bootstrap also assigns the runtime managed identities the Microsoft Graph application permissions `Policy.Read.All`, `Policy.ReadWrite.ConditionalAccess`, and `Application.Read.All` (with additional permissions for selected modes). Tenant-wide consent or assignment for those Graph app roles must be completed by a **Global Administrator or Privileged Role Administrator**. The lifecycle hooks still authenticate as the deploying administrator and fail early when the required delegated scopes are not present and consented, so preassigning a workload role does not remove the operator-context prerequisite.
 
 ## Microsoft Graph authentication
 

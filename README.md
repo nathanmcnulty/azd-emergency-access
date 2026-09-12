@@ -28,7 +28,7 @@ Install:
 Install-Module Microsoft.Graph.Authentication -Scope CurrentUser
 ```
 
-Use an administrator who can deploy Azure resources, create role assignments, prepare the emergency accounts, and grant the Microsoft Graph consent selected by the wizard. See [identity and permissions](docs/identity-and-authentication.md) before using this in production.
+Use a feature operator who can deploy Azure resources, create the required Azure role assignments, prepare the emergency accounts, and hold the Entra roles listed in [identity and permissions](docs/identity-and-authentication.md). Some environments already have the required Microsoft Graph permissions consented. If Graph consent has not been completed previously, the deployment may require a **Global Administrator or Privileged Role Administrator**.
 
 Email and Teams alerting require Entra `SigninLogs` and `AuditLogs` to already flow to Log Analytics or Microsoft Sentinel. The wizard lets you configure alerting later if those prerequisites are not ready.
 

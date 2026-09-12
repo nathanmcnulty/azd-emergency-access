@@ -36,7 +36,7 @@ git diff --exit-code -- ./infra/main.json
 ## Common problems
 
 - **A prerequisite command is missing:** install the tool named by the error and rerun `azd up`; the deployment is idempotent.
-- **Microsoft Graph returns HTTP 403:** confirm the tenant, activated Entra role, and delegated consent. Azure Owner does not grant Graph privileges.
+- **Microsoft Graph returns HTTP 403:** confirm the tenant, activated Entra role, and delegated Graph consent. Azure Owner and the feature-operation roles do not grant Graph consent. If the failure occurs while assigning a Graph application permission to a managed identity, have a **Global Administrator or Privileged Role Administrator** perform or authorize that assignment, then rerun.
 - **The proven Graph context lacks scopes:** rerun interactively so the shared authentication component can request the complete scope set once through the normal broker/browser path.
 - **Function deployment fails:** confirm Azure CLI can access the Function App and rerun `azd deploy` or `azd up`. The template builds a ready-to-run ZIP locally and uploads it with Azure CLI.
 - **Function returns 401 or 403:** confirm Easy Auth, its application audience, and the allowed playbook principal.
