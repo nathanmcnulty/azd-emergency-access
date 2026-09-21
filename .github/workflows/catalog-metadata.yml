@@ -1,0 +1,17 @@
+name: azd catalog metadata
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    name: azd catalog metadata
+    uses: nathanmcnulty/azd-reference/.github/workflows/catalog-metadata.yml@f2ea3e98c3cc98dbfcf0e6795c7f00813390125c
+    permissions:
+      contents: read
