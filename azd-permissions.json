@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "1.0",
+  "solutionId": "azd-emergency-access",
+  "status": "implemented",
+  "coverage": "partial",
+  "reviewedOn": "2026-10-02",
+  "requirements": [
+    {
+      "resource": "https://graph.microsoft.com",
+      "kind": "application",
+      "permission": "Policy.Read.All",
+      "principal": "conditional-access-worker",
+      "phase": "runtime",
+      "feature": "core",
+      "defaultEnabled": true,
+      "scope": "tenant",
+      "rationale": "Recorded Conditional Access runtime permissions.",
+      "evidenceState": "documented",
+      "evidence": [
+        {
+          "path": "docs/identity-and-authentication.md",
+          "sha256": "0c627c03de81284905f61e0f57cb2cbb52d4fbef0e5494be77d0fcb3fe61debb"
+        }
+      ]
+    },
+    {
+      "resource": "https://graph.microsoft.com",
+      "kind": "application",
+      "permission": "Policy.ReadWrite.ConditionalAccess",
+      "principal": "conditional-access-worker",
+      "phase": "runtime",
+      "feature": "core",
+      "defaultEnabled": true,
+      "scope": "tenant",
+      "rationale": "Recorded Conditional Access runtime permissions.",
+      "evidenceState": "documented",
+      "evidence": [
+        {
+          "path": "docs/identity-and-authentication.md",
+          "sha256": "0c627c03de81284905f61e0f57cb2cbb52d4fbef0e5494be77d0fcb3fe61debb"
+        }
+      ]
+    },
+    {
+      "resource": "https://graph.microsoft.com",
+      "kind": "application",
+      "permission": "Application.Read.All",
+      "principal": "conditional-access-worker",
+      "phase": "runtime",
+      "feature": "core",
+      "defaultEnabled": true,
+      "scope": "tenant",
+      "rationale": "Recorded Conditional Access runtime permissions.",
+      "evidenceState": "documented",
+      "evidence": [
+        {
+          "path": "docs/identity-and-authentication.md",
+          "sha256": "0c627c03de81284905f61e0f57cb2cbb52d4fbef0e5494be77d0fcb3fe61debb"
+        }
+      ]
+    }
+  ],
+  "gaps": [
+    "Azure RBAC scopes, operator/consent roles, cleanup, and optional connector permissions still need a full review.",
+    "Managed/external account, TAP, alerting, and cleanup delegated scope bundles require review of the dynamic resolver."
+  ]
+}
