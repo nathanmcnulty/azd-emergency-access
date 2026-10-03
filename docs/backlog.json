@@ -1,0 +1,176 @@
+{
+  "schemaVersion": "1.0.0",
+  "repository": "nathanmcnulty/azd-emergency-access",
+  "sourceRevision": "455996b97d3b34bbaa4261fc4b2c36bd7739c8cd",
+  "capturedAt": "2026-10-03",
+  "items": [
+    {
+      "id": "EA-001",
+      "title": "Reconcile this backlog with current source and active work",
+      "kind": "discovery",
+      "priority": "P1",
+      "status": "ready",
+      "wave": 0,
+      "problem": "Plans and implementation evidence are spread across files; the captured source can change while other tasks work.",
+      "scope": [
+        "docs/backlog.json",
+        "docs/backlog.md",
+        "Existing roadmap, execution status, open issues and pull requests (read-only)"
+      ],
+      "acceptance": [
+        "Classify each candidate as implemented, still open, superseded or awaiting evidence; retain source links and reasons.",
+        "Inspect dirty state, remotes, worktrees and local environment presence without reading secrets; avoid duplicate work with active owners.",
+        "Resolve the actual offline validation commands and record exact current default-branch/working-tree provenance; do not copy historical live passes to newer code."
+      ],
+      "validation": [
+        "git status --short",
+        "git remote -v",
+        "git worktree list --porcelain",
+        "Read the applicable instructions and validation workflow; read gh issue list and gh pr list for the named repository using nathanmcnulty. Do not create or modify issues/PRs."
+      ],
+      "dependencies": [],
+      "authorization": "local-only",
+      "components": [],
+      "sources": [
+        "README.md",
+        "https://github.com/nathanmcnulty/azd-emergency-access/pull/21"
+      ],
+      "evidence": [],
+      "blocker": null
+    },
+    {
+      "id": "EA-002",
+      "title": "Qualify onboarding, alert routes and independent recovery drill",
+      "kind": "verification",
+      "priority": "P1",
+      "status": "proposed",
+      "wave": 2,
+      "problem": "The emergency workflow requires retained alert and recovery evidence beyond resource readiness.",
+      "scope": [
+        "docs/",
+        "scripts/Test-Deployment.ps1",
+        "tests/"
+      ],
+      "acceptance": [
+        "Record selected account/group onboarding, sign-in alert and optional activity/notification outcomes.",
+        "Prove the independent recovery path, owned-object cleanup and recovery material custody.",
+        "Do not weaken emergency exclusions or claim recipient receipt from a successful Logic App run."
+      ],
+      "validation": [
+        "From the solution root run ./scripts/Test-Repository.ps1",
+        "Run focused tests for changed behavior from tests/; fixtures do not prove live-service or endpoint behavior.",
+        "After separate authorization, retain redacted exact-target live evidence and cleanup results outside public Git. Do not execute live operations from this backlog alone."
+      ],
+      "dependencies": [],
+      "authorization": "tenant-write",
+      "components": [],
+      "sources": [
+        "README.md"
+      ],
+      "evidence": [],
+      "blocker": null
+    },
+    {
+      "id": "EA-003",
+      "title": "Design optional workspace discovery and central health monitoring",
+      "kind": "discovery",
+      "priority": "P2",
+      "status": "proposed",
+      "wave": 3,
+      "problem": "Future admin-experience improvements need bounded resource selection and independent optional behavior.",
+      "scope": [
+        "scripts/",
+        "infra/",
+        "docs/",
+        "azd-permissions.json"
+      ],
+      "acceptance": [
+        "Discovery is read-only and requires exact workspace selection; unavailable/cross-tenant targets stop.",
+        "Optional health uses deployment-validation or Azure Monitor only for compatible signals.",
+        "Sentinel analytics and incident automation stay solution-owned; no forced monitoring dependency or inferred enforcement."
+      ],
+      "validation": [
+        "From the solution root run ./scripts/Test-Repository.ps1",
+        "Run focused tests for changed behavior from tests/; fixtures do not prove live-service or endpoint behavior."
+      ],
+      "dependencies": [],
+      "authorization": "local-only",
+      "components": [
+        "deployment-validation",
+        "azure-monitor-scheduled-query-notifications"
+      ],
+      "sources": [
+        "README.md"
+      ],
+      "evidence": [],
+      "blocker": null
+    },
+    {
+      "id": "EA-004",
+      "title": "Evaluate deployment-validation 1.1.1 as a separate consumer update",
+      "kind": "maintenance",
+      "priority": "P1",
+      "status": "proposed",
+      "wave": 1,
+      "problem": "The current lock records stable deployment-validation 1.0.0; the canonical tracked manifest is 1.1.1.",
+      "scope": [
+        "azd-components.lock.json",
+        "scripts/vendor/Azd.DeploymentValidation/",
+        "tests/",
+        "docs/"
+      ],
+      "acceptance": [
+        "Review the exact 1.0.0-to-1.1.1 diff and current consumer hashes before deciding to adopt.",
+        "Prepare only the compatible managed files and lock in one owned worktree; retain domain validation extensions.",
+        "Offline validation and commit-only rollback are required; live deployment and publication are separately authorized."
+      ],
+      "validation": [
+        "From the solution root run ./scripts/Test-Repository.ps1",
+        "Run focused tests for changed behavior from tests/; fixtures do not prove live-service or endpoint behavior.",
+        "After separate authorization, retain redacted exact-target live evidence and cleanup results outside public Git. Do not execute live operations from this backlog alone."
+      ],
+      "dependencies": [],
+      "authorization": "local-only",
+      "components": [
+        "deployment-validation"
+      ],
+      "sources": [
+        "azd-components.lock.json"
+      ],
+      "evidence": [],
+      "blocker": null
+    },
+    {
+      "id": "EA-005",
+      "title": "HOL Guard rule for `azd down --purge --force`?",
+      "kind": "discovery",
+      "priority": "P2",
+      "status": "proposed",
+      "wave": 3,
+      "problem": "Open GitHub report captured 2026-10-03. Reproduce against the current source and reconcile active PRs before changing code; the issue remains the detailed trigger/evidence reference.",
+      "scope": [
+        "Paths and trigger cited in the linked issue",
+        "Focused offline regression tests",
+        "docs/"
+      ],
+      "acceptance": [
+        "Classify the report as still reproducible, already fixed, superseded or requiring live evidence; record the exact current revision.",
+        "For a reproducible defect, demonstrate the linked trigger with an offline regression and apply the smallest fix preserving tenant/target/ownership and failure semantics.",
+        "For a feature, produce a bounded design with compatibility, optional permissions, acceptance and rollout gates before implementation; no live mutation or automatic issue closure."
+      ],
+      "validation": [
+        "Read the issue body and current source/PRs; capture the exact reproduction and existing registered offline validation command.",
+        "Use deterministic fixtures for the described trigger and negative boundary; retain current-source results. Do not rerun production or tenant operations to reproduce it."
+      ],
+      "dependencies": [],
+      "authorization": "local-only",
+      "components": [],
+      "sources": [
+        "https://github.com/nathanmcnulty/azd-emergency-access/issues/20",
+        "README.md"
+      ],
+      "evidence": [],
+      "blocker": null
+    }
+  ]
+}
