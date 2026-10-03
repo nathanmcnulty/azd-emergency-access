@@ -68,11 +68,11 @@ Work only in nathanmcnulty/azd-emergency-access, preserve its stated scope and a
 Stop if the dependencies, scope, or required authorization changed.
 ```
 
-## EA-004: Evaluate deployment-validation 1.1.1 as a separate consumer update
+## EA-004: Adopt reviewed deployment-validation 1.1.1
 
 - **Kind:** maintenance
 - **Priority:** P1
-- **Status:** proposed
+- **Status:** done
 - **Wave:** 1
 - **Authorization:** local-only
 - **Blocker:** _none_
@@ -80,7 +80,7 @@ Stop if the dependencies, scope, or required authorization changed.
 
 **Problem:**
 
-The current lock records stable deployment-validation 1.0.0; the canonical tracked manifest is 1.1.1.
+At initial capture the lock recorded deployment-validation 1.0.0; this packet adopts the compatible signed 1.1.1 release.
 
 **Scope:**
 
@@ -115,7 +115,9 @@ The current lock records stable deployment-validation 1.0.0; the canonical track
 
 **Evidence:**
 
-- _none_
+- Independent frozen-file review passed four files at source base d62c210e53e97af2d5c7b5ea664c78e5c66699bd; diff SHA256 ba2d4beb96768446e8a336cf243ef2832ccb4b16ed83dd96a2c04cfffa4b650c. Managed bytes match signed source revision 0c96cc89c554ffc3b3ca82ceda12da6591e816c1.
+- Full offline Test-Repository passed 114/114 tests plus Bicep and diff checks. Focused consumer tests passed 9/9; the reviewer reran 9/9 and a schema 1.0 plan/no-provider-call smoke 1/1. Component drift reported all five files current and exact.
+- The Graph authentication component 0.1.1, domain adapter, permissions and unbound schema 1.0 output remain unchanged. No Azure, Graph, HTTP delivery or permission operation was needed. Reviewed lock values and exact managed bytes were integrated after clean-path/base checks; release and optional evidence-binding adoption remain separate gates.
 
 **Review and authorization note:**
 

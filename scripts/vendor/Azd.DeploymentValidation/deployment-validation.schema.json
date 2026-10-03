@@ -19,7 +19,10 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "1.0"
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
     },
     "reportType": {
       "const": "azdDeploymentValidation"
@@ -80,33 +83,81 @@
     "template": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version"],
+      "required": [
+        "name",
+        "version"
+      ],
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "version": { "type": "string", "minLength": 1 }
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "environment": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "tenantId": { "type": "string" },
-        "subscriptionId": { "type": "string" },
-        "resourceGroup": { "type": "string" },
-        "azureCloud": { "type": "string" },
-        "graphEnvironment": { "type": "string" },
-        "metadata": { "type": "object" }
+        "name": {
+          "type": "string"
+        },
+        "tenantId": {
+          "type": "string"
+        },
+        "subscriptionId": {
+          "type": "string"
+        },
+        "resourceGroup": {
+          "type": "string"
+        },
+        "azureCloud": {
+          "type": "string"
+        },
+        "graphEnvironment": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "azdManagementEvidence": {
+              "$ref": "#/$defs/azdManagementEvidence"
+            }
+          },
+          "additionalProperties": true
+        }
       }
     },
     "requirements": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tools", "modules", "permissions"],
+      "required": [
+        "tools",
+        "modules",
+        "permissions"
+      ],
       "properties": {
-        "tools": { "type": "array", "items": { "type": "string" } },
-        "modules": { "type": "array", "items": { "type": "string" } },
-        "permissions": { "type": "array", "items": { "type": "string" } }
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "summary": {
@@ -121,12 +172,30 @@
         "planned"
       ],
       "properties": {
-        "pass": { "type": "integer", "minimum": 0 },
-        "fail": { "type": "integer", "minimum": 0 },
-        "warning": { "type": "integer", "minimum": 0 },
-        "info": { "type": "integer", "minimum": 0 },
-        "skipped": { "type": "integer", "minimum": 0 },
-        "planned": { "type": "integer", "minimum": 0 }
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fail": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "check": {
@@ -180,7 +249,10 @@
           "type": "object"
         },
         "remediation": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "expected": {},
         "actual": {},
@@ -200,6 +272,343 @@
           ]
         }
       }
+    },
+    "azdManagementEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "evidenceClass",
+        "binding",
+        "nextActions"
+      ],
+      "properties": {
+        "version": {
+          "const": "1"
+        },
+        "evidenceClass": {
+          "enum": [
+            "validation",
+            "delivery"
+          ]
+        },
+        "binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "project",
+            "target",
+            "source",
+            "operation"
+          ],
+          "properties": {
+            "project": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "environment"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[^\\u0000-\\u001F]+$"
+                },
+                "environment": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[^\\u0000-\\u001F]+$"
+                }
+              }
+            },
+            "target": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "azureCloud",
+                "tenantId",
+                "subscriptionId"
+              ],
+              "properties": {
+                "azureCloud": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[^\\u0000-\\u001F]+$"
+                },
+                "tenantId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "subscriptionId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "resourceGroup": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[^\\u0000-\\u001F]+$"
+                }
+              }
+            },
+            "source": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "templateId",
+                "revision"
+              ],
+              "properties": {
+                "templateId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[^\\u0000-\\u001F]+$"
+                },
+                "revision": {
+                  "oneOf": [
+                    {
+                      "const": "local"
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{40}$"
+                    }
+                  ]
+                },
+                "contractDigest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            },
+            "operation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                "kind": {
+                  "enum": [
+                    "provision",
+                    "deploy",
+                    "up",
+                    "down",
+                    "validate",
+                    "delivery",
+                    "cleanup"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "nextActions": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "owner",
+              "priority"
+            ],
+            "properties": {
+              "code": {
+                "enum": [
+                  "reviewWarnings",
+                  "retryOperation",
+                  "verifyResources",
+                  "verifyPermissions",
+                  "proveDelivery",
+                  "completeCleanup"
+                ]
+              },
+              "owner": {
+                "enum": [
+                  "operator",
+                  "subscriptionOwner",
+                  "identityAdmin",
+                  "messagingAdmin",
+                  "applicationOwner",
+                  "templateMaintainer"
+                ]
+              },
+              "priority": {
+                "enum": [
+                  "required",
+                  "recommended"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "evidenceClass": {
+                "const": "delivery"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "binding": {
+                "properties": {
+                  "operation": {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "delivery"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "binding": {
+                "properties": {
+                  "operation": {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "validate"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": "1.1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "environment"
+        ],
+        "properties": {
+          "environment": {
+            "required": [
+              "metadata"
+            ],
+            "properties": {
+              "metadata": {
+                "required": [
+                  "azdManagementEvidence"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "environment": {
+            "properties": {
+              "metadata": {
+                "not": {
+                  "required": [
+                    "azdManagementEvidence"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "schemaVersion",
+          "mode"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": "1.1"
+          },
+          "mode": {
+            "const": "delivery"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "properties": {
+              "metadata": {
+                "properties": {
+                  "azdManagementEvidence": {
+                    "properties": {
+                      "evidenceClass": {
+                        "const": "delivery"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "schemaVersion": {
+              "const": "1.1"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "environment": {
+              "properties": {
+                "metadata": {
+                  "properties": {
+                    "azdManagementEvidence": {
+                      "properties": {
+                        "evidenceClass": {
+                          "const": "validation"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
