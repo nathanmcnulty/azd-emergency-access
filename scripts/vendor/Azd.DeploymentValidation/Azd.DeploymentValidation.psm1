@@ -352,6 +352,82 @@ function Invoke-AzdValidationCheck {
     }
 }
 
+function Get-AzdValidationEvidenceProperty {
+    param([Parameter(Mandatory)][object] $Object, [Parameter(Mandatory)][string] $Name)
+    if ($Object -is [System.Collections.IDictionary]) {
+        if (-not $Object.Contains($Name)) { throw "Evidence binding must contain $Name." }
+        return $Object[$Name]
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { throw "Evidence binding must contain $Name." }
+    return $property.Value
+}
+
+function Assert-AzdValidationEvidenceShape {
+    param([Parameter(Mandatory)][object] $Object, [Parameter(Mandatory)][string[]] $Required, [string[]] $Optional = @())
+    $names = if ($Object -is [System.Collections.IDictionary]) { @($Object.Keys | ForEach-Object { [string] $_ }) } else { @($Object.PSObject.Properties.Name) }
+    foreach ($name in $Required) { if ($name -notin $names) { throw "Evidence binding must contain $name." } }
+    $unknown = @($names | Where-Object { $_ -notin @($Required + $Optional) })
+    if ($unknown.Count -gt 0) { throw "Evidence binding contains an unknown property: $($unknown[0])." }
+}
+
+function Assert-AzdValidationEvidenceText {
+    param([Parameter(Mandatory)][object] $Value, [Parameter(Mandatory)][string] $Label)
+    if ($Value -isnot [string] -or [string]::IsNullOrWhiteSpace($Value) -or $Value.Length -gt 128 -or $Value -match '[\x00-\x1F]') {
+        throw "$Label must be a bounded nonempty string without control characters."
+    }
+}
+
+function New-AzdValidationManagementEvidence {
+    param(
+        [Parameter(Mandatory)][ValidateSet('validation', 'delivery')][string] $EvidenceClass,
+        [Parameter(Mandatory)][System.Collections.IDictionary] $Binding,
+        [object[]] $NextActions = @()
+    )
+    Assert-AzdValidationEvidenceShape $Binding @('project', 'target', 'source', 'operation')
+    $project = Get-AzdValidationEvidenceProperty $Binding project
+    $target = Get-AzdValidationEvidenceProperty $Binding target
+    $source = Get-AzdValidationEvidenceProperty $Binding source
+    $operation = Get-AzdValidationEvidenceProperty $Binding operation
+    Assert-AzdValidationEvidenceShape $project @('id', 'environment')
+    Assert-AzdValidationEvidenceShape $target @('azureCloud', 'tenantId', 'subscriptionId') @('resourceGroup')
+    Assert-AzdValidationEvidenceShape $source @('templateId', 'revision') @('contractDigest')
+    Assert-AzdValidationEvidenceShape $operation @('id', 'kind')
+    foreach ($pair in @(
+            @((Get-AzdValidationEvidenceProperty $project id), 'Project ID'),
+            @((Get-AzdValidationEvidenceProperty $project environment), 'Environment'),
+            @((Get-AzdValidationEvidenceProperty $target azureCloud), 'Azure cloud'),
+            @((Get-AzdValidationEvidenceProperty $source templateId), 'Template ID')
+        )) { Assert-AzdValidationEvidenceText $pair[0] $pair[1] }
+    if (($target -is [System.Collections.IDictionary] -and $target.Contains('resourceGroup')) -or $target.PSObject.Properties['resourceGroup']) {
+        Assert-AzdValidationEvidenceText (Get-AzdValidationEvidenceProperty $target resourceGroup) 'Resource group'
+    }
+    foreach ($name in 'tenantId', 'subscriptionId') {
+        if ([string] (Get-AzdValidationEvidenceProperty $target $name) -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { throw "$name must be a UUID." }
+    }
+    $revision = [string] (Get-AzdValidationEvidenceProperty $source revision)
+    if ($revision -ne 'local' -and $revision -notmatch '^[0-9a-f]{40}$') { throw 'Source revision must be a lowercase Git SHA or local.' }
+    if (($source -is [System.Collections.IDictionary] -and $source.Contains('contractDigest')) -or $source.PSObject.Properties['contractDigest']) {
+        if ([string] (Get-AzdValidationEvidenceProperty $source contractDigest) -notmatch '^[0-9a-f]{64}$') { throw 'Contract digest must be lowercase SHA-256.' }
+    }
+    if ([string] (Get-AzdValidationEvidenceProperty $operation id) -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { throw 'Operation ID must be a UUID.' }
+    $kind = [string] (Get-AzdValidationEvidenceProperty $operation kind)
+    if (($EvidenceClass -eq 'delivery' -and $kind -ne 'delivery') -or ($EvidenceClass -eq 'validation' -and $kind -ne 'validate')) { throw 'Operation kind does not match the validation evidence class.' }
+    if ($NextActions.Count -gt 20) { throw 'Management next actions are limited to 20 items.' }
+    $normalizedActions = @($NextActions | ForEach-Object {
+            Assert-AzdValidationEvidenceShape $_ @('code', 'owner', 'priority')
+            $code = [string] (Get-AzdValidationEvidenceProperty $_ code)
+            $owner = [string] (Get-AzdValidationEvidenceProperty $_ owner)
+            $priority = [string] (Get-AzdValidationEvidenceProperty $_ priority)
+            if ($code -notin @('reviewWarnings', 'retryOperation', 'verifyResources', 'verifyPermissions', 'proveDelivery', 'completeCleanup')) { throw 'Management next-action code is not registered.' }
+            if ($owner -notin @('operator', 'subscriptionOwner', 'identityAdmin', 'messagingAdmin', 'applicationOwner', 'templateMaintainer')) { throw 'Management next-action owner is not registered.' }
+            if ($priority -notin @('required', 'recommended')) { throw 'Management next-action priority is invalid.' }
+            [ordered]@{ code = $code; owner = $owner; priority = $priority }
+        })
+    $normalizedBinding = $Binding | ConvertTo-Json -Depth 10 -Compress | ConvertFrom-Json -AsHashtable
+    [ordered]@{ version = '1'; evidenceClass = $EvidenceClass; binding = $normalizedBinding; nextActions = $normalizedActions }
+}
+
 function New-AzdValidationReport {
     [CmdletBinding()]
     param(
@@ -375,7 +451,13 @@ function New-AzdValidationReport {
 
         [hashtable] $Requirements = @{ tools = @(); modules = @(); permissions = @() },
 
-        [string[]] $NextSteps = @()
+        [string[]] $NextSteps = @(),
+
+        [ValidateSet('validation', 'delivery')][string] $EvidenceClass,
+
+        [System.Collections.IDictionary] $EvidenceBinding,
+
+        [object[]] $ManagementNextActions = @()
     )
 
     $normalizedChecks = [System.Collections.Generic.List[object]]::new()
@@ -444,14 +526,34 @@ function New-AzdValidationReport {
         @{ Expression = { $script:PhaseOrder.IndexOf($_.phase) } },
         @{ Expression = { $_.id } })
 
+    $evidenceRequested = $PSBoundParameters.ContainsKey('EvidenceClass') -or $PSBoundParameters.ContainsKey('EvidenceBinding') -or $PSBoundParameters.ContainsKey('ManagementNextActions')
+    if ($evidenceRequested -and (-not $PSBoundParameters.ContainsKey('EvidenceClass') -or -not $PSBoundParameters.ContainsKey('EvidenceBinding'))) {
+        throw 'EvidenceClass and EvidenceBinding are both required for bound validation reports.'
+    }
+    if ($evidenceRequested -and (($Mode -eq 'delivery') -ne ($EvidenceClass -eq 'delivery'))) {
+        throw 'Validation mode and evidence class must agree.'
+    }
+    $normalizedEnvironment = [ordered]@{}
+    foreach ($key in $Environment.Keys) { $normalizedEnvironment[[string] $key] = $Environment[$key] }
+    if ($evidenceRequested) {
+        $metadata = [ordered]@{}
+        if ($normalizedEnvironment.Contains('metadata')) {
+            if ($normalizedEnvironment.metadata -isnot [System.Collections.IDictionary]) { throw 'Environment metadata must be an object for bound evidence.' }
+            foreach ($key in $normalizedEnvironment.metadata.Keys) { $metadata[[string] $key] = $normalizedEnvironment.metadata[$key] }
+        }
+        if ($metadata.Contains('azdManagementEvidence')) { throw 'Environment metadata cannot define reserved azdManagementEvidence.' }
+        $metadata.azdManagementEvidence = New-AzdValidationManagementEvidence -EvidenceClass $EvidenceClass -Binding $EvidenceBinding -NextActions $ManagementNextActions
+        $normalizedEnvironment.metadata = $metadata
+    }
+
     return [pscustomobject] [ordered]@{
-        schemaVersion = '1.0'
+        schemaVersion = if ($evidenceRequested) { '1.1' } else { '1.0' }
         reportType = 'azdDeploymentValidation'
         startedAt = $StartedAt.UtcDateTime.ToString('o')
         completedAt = $completedAt.UtcDateTime.ToString('o')
         durationMs = [int] [math]::Max(0, ($completedAt - $StartedAt).TotalMilliseconds)
         template = [ordered]@{ name = $TemplateName; version = $TemplateVersion }
-        environment = ConvertTo-AzdSafeData -Value $Environment
+        environment = ConvertTo-AzdSafeData -Value $normalizedEnvironment
         mode = $Mode
         requirements = ConvertTo-AzdSafeData -Value $Requirements
         outcome = $outcome
