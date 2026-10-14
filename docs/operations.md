@@ -77,6 +77,8 @@ The script requires confirmation and deletes only objects whose current IDs matc
 
 ## Central monitoring and audit retention
 
+See the bounded [workspace discovery and health design](workspace-discovery-and-health-design.md) for exact workspace identity, read-only refusal rules, compatible health signals, and unresolved permission and ownership gates.
+
 For organization-wide coverage, use Azure Policy to route platform diagnostic settings and Azure Activity Logs into a central Log Analytics or Sentinel workspace. Configure Entra diagnostic settings once per tenant for `SigninLogs` and `AuditLogs`.
 
 The playbook diagnostic settings in this template provide run data but do not create a separate health-alert stack. A central alert can monitor failed or disabled Logic App runs across deployments. Use a polling Function or the Microsoft 365 Management Activity API only when delayed aggregation, export, cross-tenant routing, or a destination outside Azure Monitor/Sentinel requires it.
