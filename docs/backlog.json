@@ -205,6 +205,49 @@
         "No deterministic reproduction or focused regression for the reported azd down trigger was run in this component-only packet, so the item remains proposed and no source change is claimed."
       ],
       "blocker": null
+    },
+    {
+      "id": "EA-006",
+      "title": "Validate selected tenant before guided setup",
+      "kind": "maintenance",
+      "priority": "P2",
+      "status": "done",
+      "wave": 3,
+      "problem": "A supplied tenant can disagree with the cached selected subscription while preprovision changes environment choices and CLI context; the later bootstrap guard already prevents Graph mutation and ARM deployment, but setup should stop at the earlier boundary.",
+      "scope": [
+        "scripts/Validate-Environment.ps1",
+        "scripts/Tenant.Guards.psm1 (reuse existing guard; only bounded changes if required)",
+        "tests/ (actual validation-script and tenant-guard boundary fixtures)",
+        "docs/ (current behavior and backlog tracking only)"
+      ],
+      "acceptance": [
+        "Reject a known supplied-tenant/selected-subscription mismatch before persistent environment writes, wizard prompts, CLI account selection or downstream resource/workspace setup.",
+        "Preserve matching cached-session behavior, authorized subscription selection, missing-tenant resolution and standard broker/browser authentication without device-code fallback.",
+        "Reuse the existing tenant-context guard before downstream setup and retain the bootstrap guard; prove through actual-script fixtures that mismatches cause no downstream setup and matching/missing-tenant cases remain valid."
+      ],
+      "validation": [
+        "Run focused actual-script and tenant-guard fixtures on PowerShell 7.6 or newer, with fake commands only.",
+        "Run the registered offline repository validation and preserve the unchanged Graph, infrastructure, permissions and authentication boundaries."
+      ],
+      "dependencies": [],
+      "authorization": "local-only",
+      "components": [],
+      "sources": [
+        "scripts/Validate-Environment.ps1",
+        "scripts/Tenant.Guards.psm1",
+        "tests/Validate.Environment.Tests.ps1",
+        "tests/Lifecycle.Wiring.Tests.ps1",
+        "docs/workspace-discovery-and-health-design.md"
+      ],
+      "evidence": [
+        "Source assessment at main 1113a3ef9666dd8fd4cb45b8cf077f9cca522a82 identified the earlier setup gap. Bootstrap-Tenant still invokes Assert-AzdTenantContext before any Graph request, so no Graph-mutation or ARM-deployment bypass is claimed.",
+        "Preprovision now reads the requested subscription and compares its owner tenant with a supplied AZURE_TENANT_ID before `az account set`, azd environment writes, or wizard prompts. After authorized subscription selection, the existing Assert-AzdTenantContext verifies expected, subscription, and active CLI tenant plus active subscription; the original Bootstrap-Tenant guard remains in place.",
+        "Actual-script fake-command fixtures prove a supplied mismatch performs one subscription read and then stops with no account selection, login, environment write, or wizard output. Matching cached selection from another active subscription and missing-tenant resolution both complete, with the latter persisting the resolved tenant exactly once. Focused parser and Pester 5.7.1 validation passed 33/33 on PowerShell 7.6.6 without authentication or provider calls.",
+        "Registered offline validation passed 118/118 Pester tests with pinned Pester 5.7.1 on PowerShell 7.6.6, Bicep compilation matched the checked-in ARM template, and Git whitespace validation passed. No authentication, provider, Graph, permission, infrastructure, picker, deployment, or resource operation ran.",
+        "Independent source review passed all three original criteria. Actual-script fake-command fixtures independently passed 3/3 on PowerShell 7.6.6/Pester 5.7.1; retained author evidence is focused 33/33 and registered offline 118/118 with Bicep/ARM equality. Normal browser login preservation is source-inspected, not live authentication proof. Fresh exact-head hosted validation remains required before merge."
+      ],
+      "blocker": null,
+      "claim": null
     }
   ]
 }
