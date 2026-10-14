@@ -178,7 +178,7 @@ Review EA-002 against the current repository state. Its status or authorization 
 
 - **Kind:** discovery
 - **Priority:** P2
-- **Status:** proposed
+- **Status:** done
 - **Wave:** 3
 - **Authorization:** local-only
 - **Blocker:** _none_
@@ -194,6 +194,8 @@ Future admin-experience improvements need bounded resource selection and indepen
 - infra/
 - docs/
 - azd-permissions.json
+- FUTURE.md &lpar;link the bounded design; preserve deferred feature completion criteria&rpar;
+- .github/workflows/validate.yml &lpar;supported PowerShell guard and declared Pester selection only&rpar;
 
 **Acceptance:**
 
@@ -218,10 +220,24 @@ Future admin-experience improvements need bounded resource selection and indepen
 **Sources:**
 
 - README.md
+- FUTURE.md
+- docs/workspace-discovery-and-health-design.md
+- scripts/Validate-Environment.ps1
+- scripts/Post-Provision.ps1
+- scripts/Deployment.Validation.psm1
+- https&colon;//learn.microsoft.com/en-us/azure/azure-monitor/logs/granular-rbac-log-analytics
+- https&colon;//learn.microsoft.com/en-us/rest/api/securityinsights/sentinel-onboarding-states/list?view=rest-securityinsights-2025-09-01
+- https&colon;//learn.microsoft.com/en-us/azure/logic-apps/monitor-workflows-collect-diagnostic-data
+- https&colon;//learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-create-log-alert-rule
 
 **Evidence:**
 
-- _none_
+- The bounded design maps the current exact tenant, subscription, resource group, workspace and Sentinel onboarding validation, then specifies a future read-only candidate record and selection receipt bound to one canonical ARM workspace ID, target tenant, required tables, capture time and normalized evidence digest. Partial enumeration, cross-tenant, ambiguous, foreign, stale, forbidden, unavailable, failed or digest-mismatched evidence prevents selection; manual entry uses the same checks.
+- The design limits optional health to compatible point-in-time deployment-validation evidence and existing Azure Monitor data. It distinguishes resource readability, log queryability, Logic App action success, API connection state, recipient receipt and account recovery, and leaves central ownership, thresholds, routing, schedules and deployment for separate administrator authorization.
+- Existing Sentinel analytics, automation, role assignment, playbook and cleanup ownership remain local and optional. No picker, provider call, environment mutation, permission grant, component adoption, monitor, polling service, infrastructure or runtime change was implemented; FUTURE.md completion criteria remain explicitly open.
+- Current-source offline validation passed 114/114 Pester tests with supported Pester 5.7.1, Bicep compilation matched the checked-in ARM template, and the Git whitespace check passed. Backlog schema and generated-Markdown checks also passed. The initial local run selected incompatible installed Pester 6.2.0 and failed seven legacy mock assertions; the retained rerun isolated 5.7.1 and passed without source changes.
+- Independent source-bound design review completed all three original EA-003 discovery criteria. Successful empty queries remain eligible queryability evidence with an ingestion-health warning; unkeyed digests establish internal consistency only, not authenticated capture or deployment authorization. The design accurately maps the current selected-subscription preprovision shortcut and separate deployment-validation tenant check. Existing Sentinel lifecycle stays solution-owned and optional. FUTURE workspace-picker and actual central-health-alert completion criteria remain open.
+- Registered offline validation passed 114/114 under supported Pester 5.7.1 on PowerShell 7.6.6, with Bicep/checked-in ARM equality; initial installed Pester 6.2.0 legacy-mock failures were retained separately. Canonical backlog schema/render, JSON/links, original criteria and unrelated records, protected runtime/infrastructure/component bytes, and tracked/new-file whitespace passed. Hosted validation now checks 64-bit PowerShell 7.6+ before tests and explicitly imports its declared Pester 5.7.1. This is design completion only&colon; no discovery provider, environment mutation, picker, permission grant, central monitor, notification delivery, recipient receipt or recovery drill was implemented or run.
 
 **Review and authorization note:**
 

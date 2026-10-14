@@ -18,6 +18,8 @@ These ideas are intentionally deferred. They are useful, but should not make the
 
 **Completion criteria:** An administrator can select a discovered workspace, choose manual entry, or configure alerting later, and the resulting azd environment passes the existing validation contract.
 
+The bounded [workspace discovery and health design](docs/workspace-discovery-and-health-design.md) records the current source guarantees, exact selection receipt, refusal cases, and permission gaps. It does not implement this picker, so this completion criterion remains open.
+
 ## Central health monitoring
 
 **Goal:** Detect when emergency-access protection is no longer dependable—for example, a disabled or failing remediator, missing Entra log ingestion, unhealthy analytics rules, or a broken notification connection.
@@ -33,6 +35,8 @@ These ideas are intentionally deferred. They are useful, but should not make the
 - Do not automate real emergency-account sign-ins or store passkeys to test credentials.
 
 **Completion criteria:** Operators receive one actionable health alert when a protection or notification path is persistently unhealthy, with the affected environment and remediation link identified.
+
+The bounded [workspace discovery and health design](docs/workspace-discovery-and-health-design.md) maps compatible deployment-validation and Azure Monitor signals. Central ownership, thresholds, delivery, and deployment remain deferred, so this completion criterion remains open.
 
 ## Periodic recovery drills
 
