@@ -8,17 +8,22 @@ administrator experience and health-alert completion criteria remain in
 
 ## Current behavior and remaining gaps
 
-The existing deployment already has an exact final-input contract. When an
-alerting path is enabled, `scripts/Validate-Environment.ps1` builds the canonical
-workspace resource ID from the configured subscription, resource group, and
-workspace name. The preprovision check verifies access and compares `AZURE_TENANT_ID` for a
-different workspace subscription; its selected-subscription branch returns
-without a separate tenant comparison. The separate deployment-validation
-context check verifies both selected tenant and subscription. Workspace
-existence and the exact `onboardingStates/default` resource are checked when
-Sentinel is required. Exact IDs for Sentinel
-rules, automation, role assignment, and playbook are retained for validation
-and cleanup.
+The existing deployment already has an exact final-input contract. Before
+selecting an Azure CLI subscription or saving setup choices,
+`scripts/Validate-Environment.ps1` compares a supplied `AZURE_TENANT_ID` with
+the requested subscription's owner tenant. A missing tenant is resolved from
+that subscription. After selecting the requested subscription, the shared
+tenant-context guard verifies the expected, subscription, and active CLI
+tenants and the active subscription. The same guard remains at the start of
+tenant bootstrap before any Graph request.
+
+When an alerting path is enabled, validation builds the canonical workspace
+resource ID from the configured subscription, resource group, and workspace
+name. A different workspace subscription is compared with the already verified
+tenant. Workspace existence and the exact `onboardingStates/default` resource
+are checked when Sentinel is required. Exact IDs for Sentinel rules,
+automation, role assignment, and playbook are retained for validation and
+cleanup.
 
 That validation does not discover workspaces, bind a displayed candidate list
 to a selection, or prove that `SigninLogs` and `AuditLogs` are queryable. The

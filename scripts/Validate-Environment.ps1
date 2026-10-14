@@ -115,6 +115,67 @@ function Assert-GuidValue {
     }
 }
 
+Import-Module "$PSScriptRoot\Tenant.Guards.psm1" -Force
+
+if (-not $env:AZURE_SUBSCRIPTION_ID) {
+    throw 'AZURE_SUBSCRIPTION_ID is required.'
+}
+
+function Initialize-AzureCliContext {
+    $subscriptionJson = & az account show `
+        --subscription $env:AZURE_SUBSCRIPTION_ID `
+        --query '{id:id,tenantId:tenantId}' `
+        --output json `
+        --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $subscriptionJson) {
+        if (-not (Test-Interactive)) {
+            throw "Azure CLI has no cached session for subscription '$($env:AZURE_SUBSCRIPTION_ID)'. Run standard 'az login', then retry."
+        }
+        Write-Host ''
+        Write-Host 'Azure CLI needs one standard browser sign-in. A cached session will be reused when available.'
+        $loginArguments = @('login', '--output', 'none')
+        if ($env:AZURE_TENANT_ID) {
+            $loginArguments += @('--tenant', $env:AZURE_TENANT_ID)
+        }
+        & az @loginArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Azure CLI authentication did not complete through the standard cached/browser flow.'
+        }
+        $subscriptionJson = & az account show `
+            --subscription $env:AZURE_SUBSCRIPTION_ID `
+            --query '{id:id,tenantId:tenantId}' `
+            --output json `
+            --only-show-errors
+    }
+    if ($LASTEXITCODE -ne 0 -or -not $subscriptionJson) {
+        throw "Azure CLI cannot resolve subscription '$($env:AZURE_SUBSCRIPTION_ID)' after authentication."
+    }
+    $subscription = $subscriptionJson | ConvertFrom-Json
+    if ([string] $subscription.id -ne $env:AZURE_SUBSCRIPTION_ID -or -not $subscription.tenantId) {
+        throw "Azure CLI returned an invalid context for subscription '$($env:AZURE_SUBSCRIPTION_ID)'."
+    }
+    $subscriptionTenantId = [string] $subscription.tenantId
+    if ($env:AZURE_TENANT_ID) {
+        Assert-SubscriptionOwnerTenant -ExpectedTenantId $env:AZURE_TENANT_ID `
+            -SubscriptionTenantId $subscriptionTenantId
+    }
+    else {
+        Assert-SubscriptionOwnerTenant -ExpectedTenantId $subscriptionTenantId `
+            -SubscriptionTenantId $subscriptionTenantId
+    }
+    & az account set --subscription $env:AZURE_SUBSCRIPTION_ID
+    if ($LASTEXITCODE -ne 0) {
+        throw "Azure CLI cannot select subscription '$($env:AZURE_SUBSCRIPTION_ID)'."
+    }
+    return $subscription
+}
+
+$subscriptionContext = Initialize-AzureCliContext
+if (-not $env:AZURE_TENANT_ID) {
+    Set-AzdDefault AZURE_TENANT_ID ([string] $subscriptionContext.tenantId)
+}
+Assert-AzdTenantContext
+
 $guidedSetup = (Test-Interactive) -and (
     -not $env:AZD_DEPLOYMENT_MODE -or $env:AZD_GUIDED_SETUP_ACTIVE -eq 'true'
 )
@@ -148,38 +209,6 @@ if ($env:AZD_PROVISIONED_MODE -and $env:AZD_PROVISIONED_MODE -ne $env:AZD_DEPLOY
 }
 
 Set-AzdDefault AZURE_LOCATION 'westus2'
-if (-not $env:AZURE_SUBSCRIPTION_ID) {
-    throw 'AZURE_SUBSCRIPTION_ID is required.'
-}
-
-function Initialize-AzureCliContext {
-    $subscriptionId = & az account show `
-        --subscription $env:AZURE_SUBSCRIPTION_ID `
-        --query id `
-        --output tsv `
-        --only-show-errors 2>$null
-    if ($LASTEXITCODE -ne 0 -or $subscriptionId -ne $env:AZURE_SUBSCRIPTION_ID) {
-        if (-not (Test-Interactive)) {
-            throw "Azure CLI has no cached session for subscription '$($env:AZURE_SUBSCRIPTION_ID)'. Run standard 'az login', then retry."
-        }
-        Write-Host ''
-        Write-Host 'Azure CLI needs one standard browser sign-in. A cached session will be reused when available.'
-        $loginArguments = @('login', '--output', 'none')
-        if ($env:AZURE_TENANT_ID) {
-            $loginArguments += @('--tenant', $env:AZURE_TENANT_ID)
-        }
-        & az @loginArguments
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Azure CLI authentication did not complete through the standard cached/browser flow.'
-        }
-    }
-    & az account set --subscription $env:AZURE_SUBSCRIPTION_ID
-    if ($LASTEXITCODE -ne 0) {
-        throw "Azure CLI cannot select subscription '$($env:AZURE_SUBSCRIPTION_ID)'."
-    }
-}
-
-Initialize-AzureCliContext
 
 function Assert-SubscriptionTenant {
     param([Parameter(Mandatory)][string] $SubscriptionId)
@@ -199,17 +228,6 @@ function Assert-SubscriptionTenant {
     if ($tenantId -ne $env:AZURE_TENANT_ID) {
         throw "Workspace subscription '$SubscriptionId' belongs to tenant '$tenantId', not AZURE_TENANT_ID '$($env:AZURE_TENANT_ID)'."
     }
-}
-if (-not $env:AZURE_TENANT_ID) {
-    $subscriptionTenantId = & az account show `
-        --subscription $env:AZURE_SUBSCRIPTION_ID `
-        --query tenantId `
-        --output tsv `
-        --only-show-errors
-    if ($LASTEXITCODE -ne 0 -or -not $subscriptionTenantId) {
-        throw 'Unable to resolve AZURE_TENANT_ID from AZURE_SUBSCRIPTION_ID.'
-    }
-    Set-AzdDefault AZURE_TENANT_ID $subscriptionTenantId
 }
 Set-AzdDefault AZD_SCHEDULE_CRON '0 0 */6 * * *'
 Set-AzdDefault AZD_SCHEDULE_INTERVAL '6'

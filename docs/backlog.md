@@ -7,7 +7,7 @@
 - **Repository:** nathanmcnulty/azd-emergency-access
 - **Source revision:** `80450b0cf55ada25d97d322a3ff036ba6d8e236a`
 - **Captured:** 2026-10-04
-- **Items:** 5
+- **Items:** 6
 
 ## EA-001: Reconcile this backlog with current source and active work
 
@@ -295,3 +295,63 @@ Open GitHub report captured 2026-10-03. Reproduce against the current source and
 **Review and authorization note:**
 
 Review EA-005 against the current repository state. Its status or authorization class is not eligible for an actionable generated handoff. Do not claim or execute it without explicit selection, satisfied dependencies, and every required authorization. Never interpret this generated view as approval.
+
+## EA-006: Validate selected tenant before guided setup
+
+- **Kind:** maintenance
+- **Priority:** P2
+- **Status:** done
+- **Wave:** 3
+- **Authorization:** local-only
+- **Blocker:** _none_
+- **Claim:** _none_
+
+**Problem:**
+
+A supplied tenant can disagree with the cached selected subscription while preprovision changes environment choices and CLI context; the later bootstrap guard already prevents Graph mutation and ARM deployment, but setup should stop at the earlier boundary.
+
+**Scope:**
+
+- scripts/Validate-Environment.ps1
+- scripts/Tenant.Guards.psm1 &lpar;reuse existing guard; only bounded changes if required&rpar;
+- tests/ &lpar;actual validation-script and tenant-guard boundary fixtures&rpar;
+- docs/ &lpar;current behavior and backlog tracking only&rpar;
+
+**Acceptance:**
+
+- Reject a known supplied-tenant/selected-subscription mismatch before persistent environment writes, wizard prompts, CLI account selection or downstream resource/workspace setup.
+- Preserve matching cached-session behavior, authorized subscription selection, missing-tenant resolution and standard broker/browser authentication without device-code fallback.
+- Reuse the existing tenant-context guard before downstream setup and retain the bootstrap guard; prove through actual-script fixtures that mismatches cause no downstream setup and matching/missing-tenant cases remain valid.
+
+**Validation:**
+
+- Run focused actual-script and tenant-guard fixtures on PowerShell 7.6 or newer, with fake commands only.
+- Run the registered offline repository validation and preserve the unchanged Graph, infrastructure, permissions and authentication boundaries.
+
+**Dependencies:**
+
+- _none_
+
+**Components:**
+
+- _none_
+
+**Sources:**
+
+- scripts/Validate-Environment.ps1
+- scripts/Tenant.Guards.psm1
+- tests/Validate.Environment.Tests.ps1
+- tests/Lifecycle.Wiring.Tests.ps1
+- docs/workspace-discovery-and-health-design.md
+
+**Evidence:**
+
+- Source assessment at main 1113a3ef9666dd8fd4cb45b8cf077f9cca522a82 identified the earlier setup gap. Bootstrap-Tenant still invokes Assert-AzdTenantContext before any Graph request, so no Graph-mutation or ARM-deployment bypass is claimed.
+- Preprovision now reads the requested subscription and compares its owner tenant with a supplied AZURE&lowbar;TENANT&lowbar;ID before &grave;az account set&grave;, azd environment writes, or wizard prompts. After authorized subscription selection, the existing Assert-AzdTenantContext verifies expected, subscription, and active CLI tenant plus active subscription; the original Bootstrap-Tenant guard remains in place.
+- Actual-script fake-command fixtures prove a supplied mismatch performs one subscription read and then stops with no account selection, login, environment write, or wizard output. Matching cached selection from another active subscription and missing-tenant resolution both complete, with the latter persisting the resolved tenant exactly once. Focused parser and Pester 5.7.1 validation passed 33/33 on PowerShell 7.6.6 without authentication or provider calls.
+- Registered offline validation passed 118/118 Pester tests with pinned Pester 5.7.1 on PowerShell 7.6.6, Bicep compilation matched the checked-in ARM template, and Git whitespace validation passed. No authentication, provider, Graph, permission, infrastructure, picker, deployment, or resource operation ran.
+- Independent source review passed all three original criteria. Actual-script fake-command fixtures independently passed 3/3 on PowerShell 7.6.6/Pester 5.7.1; retained author evidence is focused 33/33 and registered offline 118/118 with Bicep/ARM equality. Normal browser login preservation is source-inspected, not live authentication proof. Fresh exact-head hosted validation remains required before merge.
+
+**Review and authorization note:**
+
+Review EA-006 against the current repository state. Its status or authorization class is not eligible for an actionable generated handoff. Do not claim or execute it without explicit selection, satisfied dependencies, and every required authorization. Never interpret this generated view as approval.

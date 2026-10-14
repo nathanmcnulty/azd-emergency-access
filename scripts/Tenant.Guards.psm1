@@ -17,6 +17,24 @@ function Assert-TenantMatch {
     }
 }
 
+function Assert-SubscriptionOwnerTenant {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string] $ExpectedTenantId,
+        [Parameter(Mandatory)][string] $SubscriptionTenantId
+    )
+
+    foreach ($id in @($ExpectedTenantId, $SubscriptionTenantId)) {
+        $parsed = [guid]::Empty
+        if (-not [guid]::TryParse($id, [ref]$parsed)) {
+            throw 'Tenant context values must all be valid tenant GUIDs.'
+        }
+    }
+    if ($ExpectedTenantId -ne $SubscriptionTenantId) {
+        throw "Tenant context mismatch. The azd environment expects tenant '$ExpectedTenantId', but the selected subscription belongs to '$SubscriptionTenantId'. Refusing to select the subscription or change environment settings."
+    }
+}
+
 function Assert-AzdTenantContext {
     [CmdletBinding()]
     param([switch] $PassThru)
@@ -71,4 +89,4 @@ function Get-AzdEnvironmentValue {
     return $null
 }
 
-Export-ModuleMember -Function Assert-TenantMatch, Assert-AzdTenantContext, Get-AzdEnvironmentValue
+Export-ModuleMember -Function Assert-TenantMatch, Assert-SubscriptionOwnerTenant, Assert-AzdTenantContext, Get-AzdEnvironmentValue

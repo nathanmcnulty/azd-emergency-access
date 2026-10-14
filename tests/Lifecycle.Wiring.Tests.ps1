@@ -48,7 +48,7 @@ Describe 'Lifecycle security wiring' {
         $parameters | Should -Match 'AZD_EMERGENCY_USER2_ID='
         $parameters | Should -Match 'AZD_EMERGENCY_USER3_ID='
         $validate | Should -Match 'az group exists'
-        $validate | Should -Match 'Set-AzdDefault AZURE_TENANT_ID \$subscriptionTenantId'
+        $validate | Should -Match 'Set-AzdDefault AZURE_TENANT_ID \(\[string\] \$subscriptionContext\.tenantId\)'
         $mainBicep | Should -Match "param emergencyAccessGroupObjectId string = ''"
         foreach ($mode in $modeBicep) {
             $mode | Should -Match '@minLength\(1\)\s*param emergencyAccessGroupObjectId string'
@@ -312,6 +312,11 @@ Describe 'Tenant guards' {
 
     It 'rejects an active tenant mismatch before mutations' {
         { Assert-TenantMatch -ExpectedTenantId '11111111-1111-1111-1111-111111111111' -SubscriptionTenantId '11111111-1111-1111-1111-111111111111' -ActiveTenantId '22222222-2222-2222-2222-222222222222' } | Should -Throw '*Tenant context mismatch*'
+    }
+
+    It 'rejects a selected subscription owned by another tenant before selection' {
+        { Assert-SubscriptionOwnerTenant -ExpectedTenantId '11111111-1111-1111-1111-111111111111' -SubscriptionTenantId '22222222-2222-2222-2222-222222222222' } |
+            Should -Throw '*Tenant context mismatch*Refusing to select the subscription*'
     }
 
     It 'rejects an active subscription mismatch in the same tenant' {
