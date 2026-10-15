@@ -43,25 +43,7 @@ Protect `main` with required pull requests and the `validate` status check. Crea
 
 ## Hosted runtime baseline
 
-The Function Flex worker and Automation runtime select PowerShell 7.6, which
-uses .NET 10 LTS. Automation selects the documented 7.6 default Az package
-`15.1.0`, replacing the 7.4-specific `12.3.0` default. See Microsoft's [Functions runtime contract](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-powershell#powershell-versions)
+The Function Flex worker and Automation runtime use PowerShell 7.6 on
+.NET 10 LTS. Automation uses the documented default Az package `15.1.0`.
+See Microsoft's [Functions runtime contract](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-powershell#powershell-versions)
 and [Automation runbook support](https://learn.microsoft.com/en-us/azure/automation/automation-runbook-types#powershell-runbooks).
-This source upgrade changes no hosting plan, identity, permissions or schedule
-definition. It does not prove startup or job execution in a selected region.
-
-For an existing Automation deployment, an approved redeployment creates
-`PowerShell-7-6` and rebinds the owned runbook to it. The retained
-`PowerShell-7-4` environment is not deleted. Inspect the selected account, pause
-and verify the owned schedule before rebinding, verify the deployed runtime and
-runbook binding, and run an explicitly authorized synthetic job before resuming
-the schedule. A Function configuration update restarts the worker; verify
-startup, dependency import and a synthetic invocation before production use.
-Do not run `azd up` just to validate this source change.
-
-These are operator approval gates, not an implemented paused-migration
-workflow. Provisioning also writes schedule/association resources; this source
-PR does not establish that an earlier pause survives redeployment or provide a
-pause/resume mechanism. Require a separately reviewed paused-migration
-procedure before live use, with authoritative schedule/timer readback after
-every deployment step and separate approval to resume processing.
