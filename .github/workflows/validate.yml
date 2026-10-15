@@ -31,10 +31,10 @@ jobs:
         shell: pwsh
         run: |
           Install-Module Microsoft.Graph.Authentication -RequiredVersion 2.38.0 -Force -Scope CurrentUser
-          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser
-          Import-Module Pester -RequiredVersion 5.7.1
+          Install-Module Pester -RequiredVersion 6.2.0 -Force -Scope CurrentUser
+          Import-Module Pester -RequiredVersion 6.2.0
           $result = Invoke-Pester ./tests -Output Detailed -PassThru
-          if ($result.FailedCount -gt 0) { exit 1 }
+          if ($result.Result -ne 'Passed' -or $result.TotalCount -eq 0) { exit 1 }
 
       - name: Validate PowerShell syntax and Function metadata
         shell: pwsh

@@ -1,3 +1,5 @@
+#Requires -Version 7.6
+
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory)]
