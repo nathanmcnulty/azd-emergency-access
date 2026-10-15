@@ -40,3 +40,21 @@ Changes to catalog inputs on `main` trigger [the publishing workflow](../.github
 - Do not weaken exact-ownership teardown guards to make cleanup more convenient.
 
 Protect `main` with required pull requests and the `validate` status check. Create releases only from a verified, GitHub-signed commit on protected `main`, enable immutable GitHub releases, and verify the release attestation after publication. Direct production consumers to a protected versioned tag or immutable commit rather than floating `main`.
+
+## Hosted runtime baseline
+
+The Function Flex worker and Automation runtime select PowerShell 7.6, which
+uses .NET 10 LTS. Automation selects the documented 7.6 default Az package
+`15.1.0`, replacing the 7.4-specific `12.3.0` default. See Microsoft's [Functions runtime contract](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-powershell#powershell-versions)
+and [Automation runbook support](https://learn.microsoft.com/en-us/azure/automation/automation-runbook-types#powershell-runbooks).
+This source upgrade changes no hosting plan, identity, permissions or schedule
+definition. It does not prove startup or job execution in a selected region.
+
+For an existing Automation deployment, an approved redeployment creates
+`PowerShell-7-6` and rebinds the owned runbook to it. The retained
+`PowerShell-7-4` environment is not deleted. Inspect the selected account, pause
+and verify the owned schedule before rebinding, verify the deployed runtime and
+runbook binding, and run an explicitly authorized synthetic job before resuming
+the schedule. A Function configuration update restarts the worker; verify
+startup, dependency import and a synthetic invocation before production use.
+Do not run `azd up` just to validate this source change.
