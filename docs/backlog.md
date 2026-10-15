@@ -247,7 +247,7 @@ Review EA-003 against the current repository state. Its status or authorization 
 
 - **Kind:** discovery
 - **Priority:** P2
-- **Status:** proposed
+- **Status:** done
 - **Wave:** 3
 - **Authorization:** local-only
 - **Blocker:** _none_
@@ -255,7 +255,7 @@ Review EA-003 against the current repository state. Its status or authorization 
 
 **Problem:**
 
-Open GitHub report captured 2026-10-03. Reproduce against the current source and reconcile active PRs before changing code; the issue remains the detailed trigger/evidence reference.
+GitHub issue 20 is external feature outreach for an optional HOL Guard review rule around the documented destructive &grave;azd down --purge --force&grave; command, not a reported repository or Azure Developer CLI defect. Reconcile the current source and active pull requests, then design compatibility, trust, permission, fixture and rollout boundaries before any separately authorized external contribution or enablement.
 
 **Scope:**
 
@@ -286,11 +286,13 @@ Open GitHub report captured 2026-10-03. Reproduce against the current source and
 
 - https&colon;//github.com/nathanmcnulty/azd-emergency-access/issues/20
 - README.md
+- docs/hol-guard-down-review-design.md
 
 **Evidence:**
 
-- Read-only reconciliation on 2026-10-04 confirmed issue &num;20 remains open with no closing pull request at current main 80450b0cf55ada25d97d322a3ff036ba6d8e236a.
-- No deterministic reproduction or focused regression for the reported azd down trigger was run in this component-only packet, so the item remains proposed and no source change is claimed.
+- Read-only reconciliation at repository base 888cbbd0135a116fdf9924135910b08ad56b6a50 classified issue 20 as optional external feature outreach rather than an azd or repository defect. The merged PR 21 changed only the pinned catalog workflow and is unrelated. Current predown behavior retains tenant assertion and exact-owned cleanup refusal semantics; no defect reproduction or live evidence was required for this classification.
+- The adopted design binds the immutable HOL Extension Builder specification at 1a96f4d9c838b3953b1bcf5725ccefc0d26ff91d. Every positively intercepted, parser-admitted and fixture-proven azd down form must resolve to review with zero target executions and no safeArgv. Rejected, differently parsed or non-intercepted forms are coverage gaps; any generic unknown-command review floor is a separately fixture-proven host-policy property.
+- The optional external source remains off by default and adds no Azure, ARM, Microsoft Graph or repository permission and no solution runtime dependency. No saved azd help snapshot, HOL tool run, fixture result, implementation, matcher coverage, external contribution, enablement, authentication, provider operation or teardown execution is claimed; each remains separately authorized.
 
 **Review and authorization note:**
 
