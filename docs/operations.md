@@ -65,6 +65,8 @@ azd down --purge --force
 
 The predown hook deletes only exact IDs recorded as owned by this environment, including external Sentinel rules and role assignments. If ownership cannot be proven, teardown stops instead of broadening deletion. Existing workspaces and supplied API connections are never deleted.
 
+See the optional [HOL Guard review design](hol-guard-down-review-design.md) for an external, opt-in pre-tool review boundary. It does not replace these teardown checks or authorize deletion.
+
 ## Remove tenant identities
 
 Normal Azure cleanup deliberately retains the emergency accounts and group. Only after explicit approval, delete exact-owned tenant objects with:
