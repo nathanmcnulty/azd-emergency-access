@@ -29,9 +29,9 @@ Describe 'Portfolio deployment validation' {
         $report.mode | Should -Be 'plan'
         $report.outcome | Should -Be 'planned'
         $report.summary.planned | Should -Be 9
-        Assert-MockCalled az -Times 0 -Exactly
-        Assert-MockCalled Invoke-WebRequest -Times 0 -Exactly
-        Assert-MockCalled Start-Sleep -Times 0 -Exactly
+        Should -Invoke az -Times 0 -Exactly
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+        Should -Invoke Start-Sleep -Times 0 -Exactly
     }
 
     It 'fails context before Azure access when a persisted deployment decision is missing' {
@@ -65,7 +65,7 @@ Describe 'Portfolio deployment validation' {
             $outcome.status | Should -Be 'fail'
             $outcome.actual.failureCode | Should -Be 'context.requiredValueMissing'
             @($outcome.actual.missingValueNames) | Should -Contain 'AZD_ENABLE_SIGNIN_ALERTS'
-            Assert-MockCalled Assert-AzdTenantContext -Times 0 -Exactly
+            Should -Invoke Assert-AzdTenantContext -Times 0 -Exactly
         }
     }
 
@@ -99,7 +99,7 @@ Describe 'Portfolio deployment validation' {
 
             $outcome.status | Should -Be 'fail'
             $outcome.actual.failureCode | Should -Be 'context.deploymentModeInvalid'
-            Assert-MockCalled Assert-AzdTenantContext -Times 0 -Exactly
+            Should -Invoke Assert-AzdTenantContext -Times 0 -Exactly
         }
     }
 
@@ -134,7 +134,7 @@ Describe 'Portfolio deployment validation' {
             $outcome.status | Should -Be 'fail'
             $outcome.actual.failureCode | Should -Be 'context.featureDecisionInvalid'
             @($outcome.actual.invalidValueNames) | Should -Contain 'AZD_ENABLE_SIGNIN_ALERTS'
-            Assert-MockCalled Assert-AzdTenantContext -Times 0 -Exactly
+            Should -Invoke Assert-AzdTenantContext -Times 0 -Exactly
         }
     }
 
@@ -170,10 +170,10 @@ Describe 'Portfolio deployment validation' {
                 )) {
                 ($results | Where-Object id -eq $id).status | Should -Be 'skipped'
             }
-            Assert-MockCalled az -Times 0 -Exactly
-            Assert-MockCalled Invoke-WebRequest -Times 0 -Exactly
-            Assert-MockCalled Test-EmergencySentinelFunctionAuthentication -Times 0 -Exactly
-            Assert-MockCalled Invoke-EmergencySentinelNotificationDelivery -Times 0 -Exactly
+            Should -Invoke az -Times 0 -Exactly
+            Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+            Should -Invoke Test-EmergencySentinelFunctionAuthentication -Times 0 -Exactly
+            Should -Invoke Invoke-EmergencySentinelNotificationDelivery -Times 0 -Exactly
         }
     }
 
@@ -213,7 +213,7 @@ Describe 'Portfolio deployment validation' {
             $outcomes[0].status | Should -Be 'pass'
             @($outcomes[0].evidence.verifiedActionNames) |
                 Should -Be @('Post_message_to_Teams_channel', 'Send_incident_email')
-            Assert-MockCalled Invoke-EmergencySentinelNotificationDelivery -Times 1 -Exactly
+            Should -Invoke Invoke-EmergencySentinelNotificationDelivery -Times 1 -Exactly
         }
     }
 
