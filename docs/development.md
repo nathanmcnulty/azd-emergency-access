@@ -58,3 +58,10 @@ runbook binding, and run an explicitly authorized synthetic job before resuming
 the schedule. A Function configuration update restarts the worker; verify
 startup, dependency import and a synthetic invocation before production use.
 Do not run `azd up` just to validate this source change.
+
+These are operator approval gates, not an implemented paused-migration
+workflow. Provisioning also writes schedule/association resources; this source
+PR does not establish that an earlier pause survives redeployment or provide a
+pause/resume mechanism. Require a separately reviewed paused-migration
+procedure before live use, with authoritative schedule/timer readback after
+every deployment step and separate approval to resume processing.
