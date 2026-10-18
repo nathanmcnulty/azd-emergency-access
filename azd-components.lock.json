@@ -4,14 +4,14 @@
   "components": [
     {
       "id": "deployment-validation",
-      "version": "1.1.1",
+      "version": "2.0.0",
       "sourceRepository": "https://github.com/nathanmcnulty/azd-reference",
-      "sourceRevision": "0c96cc89c554ffc3b3ca82ceda12da6591e816c1",
+      "sourceRevision": "2b2e784ba11822272c0e4b8389976f95afafa9b9",
       "files": [
         {
           "source": "components/powershell/deployment-validation/Azd.DeploymentValidation.psd1",
           "target": "scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1",
-          "sha256": "96f0773f9b2ebcb2e36cdbc894420fa898f10d99662edefd4a1782c29e9794f0"
+          "sha256": "09feca0f12bf7cd2d2dd68427f5e5efdbaab0d491dbff535cc4db5de99f3c5e7"
         },
         {
           "source": "components/powershell/deployment-validation/Azd.DeploymentValidation.psm1",
@@ -27,14 +27,14 @@
     },
     {
       "id": "graph-delegated-authentication",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "sourceRepository": "https://github.com/nathanmcnulty/azd-reference",
-      "sourceRevision": "bc2cf2aad4ff5ebadabe8fd0f0efcf71d94d0e0f",
+      "sourceRevision": "2b2e784ba11822272c0e4b8389976f95afafa9b9",
       "files": [
         {
           "source": "components/powershell/graph-delegated-authentication/Azd.GraphAuthentication.psd1",
           "target": "scripts/vendor/Azd.GraphAuthentication/Azd.GraphAuthentication.psd1",
-          "sha256": "624c237687850a27d748c0af46ed09f289ebf3a5ef18c72761f5a9162c41f696"
+          "sha256": "6994ecd6dc301649c9c5c53d43ff39e0a930e61c43e443772e9ee0bafc948729"
         },
         {
           "source": "components/powershell/graph-delegated-authentication/Azd.GraphAuthentication.psm1",

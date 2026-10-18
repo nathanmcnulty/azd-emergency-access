@@ -1,12 +1,12 @@
 @{
     RootModule = 'Azd.DeploymentValidation.psm1'
-    ModuleVersion = '1.1.1'
+    ModuleVersion = '2.0.0'
     GUID = '55b77c65-9a89-4b7f-9ed0-0c0d9a33e9d9'
     Author = 'Nathan McNulty'
     CompanyName = 'Community'
     Copyright = 'Released into the public domain under the Unlicense.'
     Description = 'Structured deployment validation with defense-in-depth report redaction for azd solutions.'
-    PowerShellVersion = '7.2'
+    PowerShellVersion = '7.6'
     FunctionsToExport = @(
         'Assert-AzdValidationSucceeded',
         'ConvertTo-AzdSafeData',
