@@ -7,7 +7,7 @@
 - **Repository:** nathanmcnulty/azd-emergency-access
 - **Source revision:** `80450b0cf55ada25d97d322a3ff036ba6d8e236a`
 - **Captured:** 2026-10-04
-- **Items:** 6
+- **Items:** 7
 
 ## EA-001: Reconcile this backlog with current source and active work
 
@@ -121,6 +121,67 @@ At initial capture the lock recorded deployment-validation 1.0.0; this packet ad
 **Review and authorization note:**
 
 Review EA-004 against the current repository state. Its status or authorization class is not eligible for an actionable generated handoff. Do not claim or execute it without explicit selection, satisfied dependencies, and every required authorization. Never interpret this generated view as approval.
+
+## EA-007: Adopt canonical PowerShell 7.6 validation and Graph components
+
+- **Kind:** maintenance
+- **Priority:** P2
+- **Status:** done
+- **Wave:** 1
+- **Authorization:** local-only
+- **Blocker:** _none_
+- **Claim:** _none_
+
+**Problem:**
+
+Owned authoring scripts require PowerShell 7.6, but the vendored validation and delegated Graph module manifests still declare 7.2. Merged Reference &num;99 provides reviewed replacements without implementation or data-contract changes.
+
+**Scope:**
+
+- azd-components.lock.json
+- scripts/vendor/Azd.DeploymentValidation/Azd.DeploymentValidation.psd1
+- scripts/vendor/Azd.GraphAuthentication/Azd.GraphAuthentication.psd1
+- tests/Deployment.Validation.Tests.ps1
+- tests/Graph.Authentication.Tests.ps1
+- docs/identity-and-authentication.md
+- docs/backlog.json
+- docs/backlog.md
+
+**Acceptance:**
+
+- Synchronize deployment-validation 2.0.0 and graph-delegated-authentication 0.2.0 from reviewed immutable Reference source, with exact managed file hashes; never hand-edit vendor bytes.
+- Assert both 7.6 manifest floors in existing lock/provenance tests and preserve implementation, report schema, Graph scope, deployment, permission and recovery behavior.
+- Pass the maintained offline validator and independent review before commit/push. Keep hosted-runtime, live authentication, delivery and recovery gates open.
+
+**Validation:**
+
+- ./scripts/Test-Repository.ps1
+- Run canonical component drift, backlog schema and generated Markdown checks against this consumer, then independently review the exact final diff.
+
+**Dependencies:**
+
+- EA-004
+
+**Components:**
+
+- deployment-validation
+- graph-delegated-authentication
+
+**Sources:**
+
+- https&colon;//github.com/nathanmcnulty/azd-emergency-access/issues/27
+- https&colon;//github.com/nathanmcnulty/azd-reference/issues/98
+- https&colon;//github.com/nathanmcnulty/azd-reference/pull/99
+
+**Evidence:**
+
+- 2026-10-18&colon; From baseline PR &num;30 head 637a3118f1e7c2f57b2c9b8edddcbfe7e1f42e66, canonical synchronization adopted both components at merged Reference revision 2b2e784ba11822272c0e4b8389976f95afafa9b9. All five managed files match their exact source/lock hashes. Only module versions and PowerShell floors change; both implementations and the report schema remain byte-unchanged. Existing runtime PR &num;29 and ACS-guidance PR &num;28 are preserved separately.
+- Full maintained offline validation passed on PowerShell 7.6.6/Pester 6.2.0 with Microsoft.Graph.Authentication 2.38.0&colon; 120 tests, zero failed, skipped, inconclusive or unexecuted cases. Parsing, Function JSON, real Bicep 0.42.1 compilation/checked-in ARM structural parity and whitespace gates passed. The validation process rejected unmocked CLI commands outside offline Bicep version/build. Application/runtime, infrastructure and permissions have no diff.
+- This completes source adoption only. EA-002 and issues &num;27/Reference &num;98 retain hosted-runtime, authentication, delivery and recovery acceptance. Central consumer desired-version reconciliation remains pending integration of this dependent draft; no default-branch portfolio rollout or component release is claimed. No Azure operation, authentication, account switch, permission change, delivery, merge or release occurred.
+
+**Review and authorization note:**
+
+Review EA-007 against the current repository state. Its status or authorization class is not eligible for an actionable generated handoff. Do not claim or execute it without explicit selection, satisfied dependencies, and every required authorization. Never interpret this generated view as approval.
 
 ## EA-002: Qualify onboarding, alert routes and independent recovery drill
 

@@ -59,6 +59,13 @@ For an interactive Azure CLI user, the account is derived automatically and an e
 
 The exact component revision and hashes are recorded in `azd-components.lock.json`. Update it from `azd-reference`; do not edit `scripts/vendor/Azd.GraphAuthentication` locally.
 
+The Graph coordinator 0.2.0 and deployment-validation engine 2.0.0 are vendored
+from reviewed Reference commit `2b2e784ba11822272c0e4b8389976f95afafa9b9`.
+Both require PowerShell 7.6 or newer. This adoption changes their module versions
+and runtime floors only; implementations, report schema and Graph scope behavior
+are unchanged. Neither component fetches Reference code at runtime. Source
+adoption does not establish native authentication, delivery or recovery proof.
+
 Runtime workloads use managed identity with `Policy.Read.All`, `Policy.ReadWrite.ConditionalAccess`, and `Application.Read.All`. `Application.Read.All` is included because Conditional Access PATCH currently requires that application permission in addition to the policy permissions.
 
 ## Password handling

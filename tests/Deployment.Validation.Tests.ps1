@@ -227,6 +227,7 @@ Describe 'Portfolio deployment validation' {
         $moduleFile.Count | Should -Be 1
         $moduleManifest = Import-PowerShellDataFile -LiteralPath (Join-Path $repoRoot $moduleFile[0].target)
         $moduleManifest.ModuleVersion.ToString() | Should -Be $component[0].version
+        $moduleManifest.PowerShellVersion | Should -Be '7.6'
         foreach ($file in $component[0].files) {
             $actual = (Get-FileHash -LiteralPath (Join-Path $repoRoot $file.target) -Algorithm SHA256).Hash.ToLowerInvariant()
             $actual | Should -Be $file.sha256
