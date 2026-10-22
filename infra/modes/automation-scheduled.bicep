@@ -39,17 +39,17 @@ resource automation 'Microsoft.Automation/automationAccounts@2024-10-23' = {
 
 resource runtime 'Microsoft.Automation/automationAccounts/runtimeEnvironments@2024-10-23' = {
   parent: automation
-  name: 'PowerShell-7-4'
+  name: 'PowerShell-7-6'
   location: location
   tags: tags
   properties: {
-    description: 'PowerShell 7.4 with the supported Az package for managed identity authentication.'
+    description: 'PowerShell 7.6 with the supported Az package for managed identity authentication.'
     runtime: {
       language: 'PowerShell'
-      version: '7.4'
+      version: '7.6'
     }
     defaultPackages: {
-      Az: '12.3.0'
+      Az: '15.1.0'
     }
   }
 }
