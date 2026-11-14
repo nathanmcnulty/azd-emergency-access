@@ -247,7 +247,7 @@ Describe 'Lifecycle security wiring' {
 
     It 'pins validation dependencies and scopes the catalog token to one step' {
         $validationWorkflow | Should -Match 'Install-Module Microsoft\.Graph\.Authentication -RequiredVersion 2\.38\.0'
-        $validationWorkflow | Should -Match 'Install-Module Pester -RequiredVersion 5\.7\.1'
+        $validationWorkflow | Should -Match 'Install-Module Pester -RequiredVersion 6\.2\.0'
         $validationWorkflow | Should -Not -Match 'Install-Module Pester -MinimumVersion'
         $graphInstallIndex = $validationWorkflow.IndexOf('Install-Module Microsoft.Graph.Authentication')
         $pesterIndex = $validationWorkflow.IndexOf('Invoke-Pester')
@@ -385,7 +385,7 @@ Describe 'Tenant guards' {
             finally {
                 $env:AZD_VALIDATION_HYDRATION_TEST = $oldValue
             }
-            Assert-MockCalled Invoke-AzdEnvironmentValueRead -Times 1 -Exactly
+            Should -Invoke Invoke-AzdEnvironmentValueRead -Times 1 -Exactly
         }
     }
 }

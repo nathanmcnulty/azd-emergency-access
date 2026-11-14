@@ -21,7 +21,7 @@ Install:
 
 - [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
-- PowerShell 7.4 or later
+- PowerShell 7.6 or later
 - Microsoft Graph authentication for PowerShell:
 
 ```powershell

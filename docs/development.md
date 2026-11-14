@@ -4,7 +4,7 @@
 
 ## Validate a change
 
-Run the same core checks used by GitHub Actions:
+Use PowerShell 7.6 or later and Pester 6.2.0 or later. GitHub Actions pins Pester 6.2.0. Run the same core checks used by GitHub Actions:
 
 ```powershell
 $result = Invoke-Pester ./tests -PassThru
