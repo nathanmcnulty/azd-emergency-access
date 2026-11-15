@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "15806095843171889576"
+      "templateHash": "10021471047291771981"
     }
   },
   "parameters": {
@@ -241,7 +241,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "7140322395993799785"
+              "templateHash": "16329584613757033695"
             }
           },
           "parameters": {
@@ -301,17 +301,17 @@
             {
               "type": "Microsoft.Automation/automationAccounts/runtimeEnvironments",
               "apiVersion": "2024-10-23",
-              "name": "[format('{0}/{1}', format('{0}-aa', parameters('namePrefix')), 'PowerShell-7-4')]",
+              "name": "[format('{0}/{1}', format('{0}-aa', parameters('namePrefix')), 'PowerShell-7-6')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "properties": {
-                "description": "PowerShell 7.4 with the supported Az package for managed identity authentication.",
+                "description": "PowerShell 7.6 with the supported Az package for managed identity authentication.",
                 "runtime": {
                   "language": "PowerShell",
-                  "version": "7.4"
+                  "version": "7.6"
                 },
                 "defaultPackages": {
-                  "Az": "12.3.0"
+                  "Az": "15.1.0"
                 }
               },
               "dependsOn": [
@@ -329,11 +329,11 @@
                 "logProgress": true,
                 "logVerbose": true,
                 "runbookType": "PowerShell",
-                "runtimeEnvironment": "PowerShell-7-4"
+                "runtimeEnvironment": "PowerShell-7-6"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Automation/automationAccounts', format('{0}-aa', parameters('namePrefix')))]",
-                "[resourceId('Microsoft.Automation/automationAccounts/runtimeEnvironments', format('{0}-aa', parameters('namePrefix')), 'PowerShell-7-4')]"
+                "[resourceId('Microsoft.Automation/automationAccounts/runtimeEnvironments', format('{0}-aa', parameters('namePrefix')), 'PowerShell-7-6')]"
               ]
             },
             {
@@ -710,7 +710,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "1434298425072197655"
+              "templateHash": "1512396880278680111"
             }
           },
           "parameters": {
@@ -1179,7 +1179,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.42.1.51946",
-                      "templateHash": "925733706397570397"
+                      "templateHash": "1206882595810863523"
                     }
                   },
                   "parameters": {
@@ -1335,7 +1335,7 @@
                           },
                           "runtime": {
                             "name": "powershell",
-                            "version": "7.4"
+                            "version": "7.6"
                           },
                           "scaleAndConcurrency": {
                             "maximumInstanceCount": 20,
@@ -1941,7 +1941,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "15113142504506367193"
+              "templateHash": "10371511272199150683"
             }
           },
           "parameters": {
@@ -2673,7 +2673,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.42.1.51946",
-                      "templateHash": "925733706397570397"
+                      "templateHash": "1206882595810863523"
                     }
                   },
                   "parameters": {
@@ -2829,7 +2829,7 @@
                           },
                           "runtime": {
                             "name": "powershell",
-                            "version": "7.4"
+                            "version": "7.6"
                           },
                           "scaleAndConcurrency": {
                             "maximumInstanceCount": 20,

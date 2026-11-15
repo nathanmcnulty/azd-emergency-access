@@ -40,3 +40,10 @@ Changes to catalog inputs on `main` trigger [the publishing workflow](../.github
 - Do not weaken exact-ownership teardown guards to make cleanup more convenient.
 
 Protect `main` with required pull requests and the `validate` status check. Create releases only from a verified, GitHub-signed commit on protected `main`, enable immutable GitHub releases, and verify the release attestation after publication. Direct production consumers to a protected versioned tag or immutable commit rather than floating `main`.
+
+## Hosted runtime baseline
+
+The Function Flex worker and Automation runtime use PowerShell 7.6 on
+.NET 10 LTS. Automation uses the documented default Az package `15.1.0`.
+See Microsoft's [Functions runtime contract](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-powershell#powershell-versions)
+and [Automation runbook support](https://learn.microsoft.com/en-us/azure/automation/automation-runbook-types#powershell-runbooks).
