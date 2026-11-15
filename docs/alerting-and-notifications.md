@@ -67,8 +67,6 @@ Direct Microsoft Graph application posting to ordinary Teams channels is not a s
 
 Sentinel notifications can also use an existing authorized Office 365 Outlook Logic Apps connection. This is separate from the simpler Azure Monitor action-group email and has a delegated connection-owner lifecycle.
 
-For application-only branded email, consider Azure Communication Services as a separate organization-wide adapter rather than adding it to every deployment.
-
 ## Delivery validation and health
 
 Run `./scripts/Test-Deployment.ps1 -TestDelivery` after the Teams connection is authorized to post one clearly labeled test message and fail when the real Logic App delivery action does not succeed. Default validation never sends a notification.
